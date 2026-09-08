@@ -50,9 +50,9 @@ router.get("/", async (req, res, next) => {
 router.get("/:id", async (req, res, next) => {
   try {
     try {
-    const id = Number.parseInt(req.params.id, 10);
+    const proj_id = Number.parseInt(req.params.id, 10);
 
-    if (!Number.isInteger(id) || id <= 0) {
+    if (!Number.isInteger(proj_id) || proj_id <= 0) {
       return res.status(400).json({
         error: "Invalid project id"
       });
@@ -64,7 +64,7 @@ router.get("/:id", async (req, res, next) => {
       FROM projects
       WHERE id = $1
       `,
-      [id]
+      [proj_id]
     );
 
     if (result.rowCount === 0) {
