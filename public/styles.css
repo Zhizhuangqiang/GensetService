@@ -111,14 +111,58 @@ input { min-width: 250px; }
 select:focus, input:focus, button:focus-visible { outline: 3px solid rgba(15,118,110,.2); outline-offset: 1px; }
 .sidebar-backdrop { position: fixed; inset: 0; z-index: 25; background: rgba(0,0,0,.4); }
 .toast { position: fixed; right: 20px; bottom: 20px; z-index: 50; max-width: 380px; padding: 12px 16px; border-radius: 10px; background: #102e31; color: #fff; box-shadow: var(--shadow); }
-.overview-link {
-    width: 100%;
-    border: 0;
-    background: transparent;
-    color: inherit;
-    font: inherit;
-    text-align: left;
-    cursor: pointer;
+/* Make the clickable overview rows look identical to the static rows */
+.overview-list > .overview-link,
+.overview-list > .overview-static {
+  /* reset button defaults */
+  appearance: none;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+
+  /* match the existing static row layout */
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;   /* pushes the number to the right */
+  gap: 12px;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--line, #e5e7eb);
+}
+
+.overview-list > .overview-link:last-child,
+.overview-list > .overview-static:last-child {
+  border-bottom: 0;
+}
+
+/* keep the label + value typography consistent across every row */
+.overview-list > .overview-link span,
+.overview-list > .overview-static span {
+  color: var(--muted, #667085);
+}
+
+.overview-list > .overview-link strong,
+.overview-list > .overview-static strong {
+  font-size: 17px;
+  font-weight: 700;
+}
+
+/* clickable affordance only for the interactive rows */
+.overview-list > .overview-link {
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background 0.15s ease;
+}
+
+.overview-list > .overview-link:hover {
+  background: var(--brand-soft, #f1f5f9);
+}
+
+.overview-list > .overview-link:focus-visible {
+  outline: 3px solid rgba(15, 118, 110, 0.25);
+  outline-offset: 2px;
 }
 
 @media (max-width: 1000px) {
