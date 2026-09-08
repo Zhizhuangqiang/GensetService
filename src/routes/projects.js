@@ -3,11 +3,12 @@ const pool = require("../db");
 
 const router = express.Router();
 
-router.get("/", async (req, res, next) => {
+router.get("/:id", async (req, res, next) => {
   try {
     const result = await pool.query(`
       SELECT *
       FROM projects
+	  WHERE id = $1
       ORDER BY name
     `);
 
@@ -17,7 +18,7 @@ router.get("/", async (req, res, next) => {
   }
 });
 
-router.get("/:id", async (req, res, next) => {
+router.get("/", async (req, res, next) => {
   try {
     const result = await pool.query(
       `SELECT
