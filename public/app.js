@@ -288,6 +288,76 @@ async function loadAll({
     }
 }
 
+async function loadProjectsView() {
+
+    const response =
+        await fetch("/api/projects");
+
+    const data =
+        await response.json();
+
+    document.getElementById(
+        "systemTitle").textContent = "Projects";
+
+    document.getElementById(
+        "systemsHead").innerHTML = `
+        <tr>
+            <th>ID</th>
+            <th>Code</th>
+            <th>Name</th>
+            <th>Active</th>
+        </tr>
+    `;
+
+    document.getElementById(
+        "systemsBody").innerHTML =
+        data.items.map(project => `
+            <tr>
+                <td>${project.id}</td>
+                <td>${project.code ?? ""}</td>
+                <td>${project.name}</td>
+                <td>${project.active}</td>
+            </tr>
+        `).join("");
+
+    setView("systems");
+}
+
+async function loadGensetsView() {
+
+    const response =
+        await fetch("/api/gensets");
+
+    const data =
+        await response.json();
+
+    document.getElementById(
+        "systemTitle").textContent = "Gensets";
+
+    document.getElementById(
+        "systemsHead").innerHTML = `
+        <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Equipment Tag</th>
+            <th>Project</th>
+        </tr>
+    `;
+
+    document.getElementById(
+        "systemsBody").innerHTML =
+        data.items.map(g => `
+            <tr>
+                <td>${g.id}</td>
+                <td>${g.name}</td>
+                <td>${g.equipment_tag ?? ""}</td>
+                <td>${g.project_name ?? ""}</td>
+            </tr>
+        `).join("");
+
+    setView("systems");
+}
+
 function bindEvents() {
     $$(".nav-item").forEach(item => item.addEventListener("click", () => setView(item.dataset.view)));
     $$('[data-go-view]').forEach(item => item.addEventListener("click", () => setView(item.dataset.goView)));
@@ -316,6 +386,24 @@ function bindEvents() {
     window.addEventListener("offline", () => {
         setConnection(false);
         showAlert("The browser is offline. Previously loaded information remains visible.");
+    });
+    document.querySelectorAll("[data-system-view]")
+    .forEach(item => {
+
+        item.addEventListener("click", () => {
+
+            switch (
+                item.dataset.systemView) {
+
+            case "projects":
+                loadProjectsView();
+                break;
+
+            case "gensets":
+                loadGensetsView();
+                break;
+            }
+        });
     });
 }
 
