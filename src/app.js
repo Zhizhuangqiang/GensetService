@@ -3,6 +3,8 @@ const cors = require("cors");
 const helmet = require("helmet");
 const pool = require("./db");
 const dashboardRouter = require("./routes/dashboard");
+const projectsRouter = require("./routes/projects");
+const gensetsRouter = require("./routes/gensets");
 
 const app = express();
 app.disable("x-powered-by");
@@ -40,7 +42,19 @@ app.get("/api/health", async (_req, res, next) => {
   }
 });
 
-app.use("/api/dashboard", dashboardRouter);
+app.use(
+	"/api/dashboard",
+	dashboardRouter
+);
+app.use(
+  "/api/projects",
+  projectsRouter
+);
+
+app.use(
+  "/api/gensets",
+  gensetsRouter
+);
 
 app.use((_req, res) => res.status(404).json({ error: "Route not found" }));
 
