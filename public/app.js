@@ -376,7 +376,7 @@ async function loadGensetsView() {
 }
 
 async function loadServiceItemsView() {
-  const items = itemsOf(await apiFetch("/api/service-items"));
+  const items = itemsOf(await apiFetch("/api/serviceitems"));
   renderSystemsTable(
     "Service Items",
     "Maintenance activity definitions",
