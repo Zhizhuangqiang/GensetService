@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f766e">
+  <meta name="description" content="Genset maintenance schedules, due dates, and service history.">
+  <title>Genset Service Manager</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to content</a>
+
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar" aria-label="Primary navigation">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">GS</div>
+        <div>
+          <strong>Genset Service</strong>
+          <span>Maintenance Manager</span>
+        </div>
+      </div>
+
+      <nav class="nav-list">
+        <button class="nav-item active" data-view="dashboard" type="button">
+          <span aria-hidden="true">▦</span> Dashboard
+        </button>
+        <button class="nav-item" data-view="maintenance" type="button">
+          <span aria-hidden="true">✓</span> Service Status
+        </button>
+        <button class="nav-item" data-view="recent" type="button">
+          <span aria-hidden="true">↻</span> Recent Service
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <span class="connection-dot" id="connectionDot" aria-hidden="true"></span>
+        <span id="connectionText">Connecting...</span>
+      </div>
+    </aside>
+
+    <div class="main-column">
+      <header class="topbar">
+        <button class="menu-button" id="menuButton" type="button" aria-label="Open navigation" aria-expanded="false">☰</button>
+        <div>
+          <h1 id="pageTitle">Dashboard</h1>
+          <p id="pageSubtitle">Genset maintenance overview</p>
+        </div>
+        <div class="topbar-actions">
+          <span class="last-updated" id="lastUpdated">Not updated</span>
+          <button class="button secondary" id="refreshButton" type="button">Refresh</button>
+        </div>
+      </header>
+
+      <main id="main-content" tabindex="-1">
+        <div class="alert hidden" id="globalAlert" role="alert"></div>
+
+        <section class="view" id="dashboardView" data-view-panel="dashboard">
+          <div class="metric-grid" aria-label="Maintenance summary">
+            <button class="metric-card danger" data-status-filter="OVERDUE" type="button">
+              <span class="metric-label">Overdue</span>
+              <strong id="metricOverdue">0</strong>
+              <span>Requires attention</span>
+            </button>
+            <button class="metric-card warning" data-status-filter="DUE_SOON" type="button">
+              <span class="metric-label">Due Soon</span>
+              <strong id="metricDueSoon">0</strong>
+              <span>Inside warning period</span>
+            </button>
+            <button class="metric-card success" data-status-filter="OK" type="button">
+              <span class="metric-label">On Schedule</span>
+              <strong id="metricOk">0</strong>
+              <span>Outside warning period</span>
+            </button>
+            <button class="metric-card neutral" data-status-filter="NOT_SET" type="button">
+              <span class="metric-label">Not Set</span>
+              <strong id="metricNotSet">0</strong>
+              <span>Missing baseline date</span>
+            </button>
+          </div>
+
+          <div class="overview-grid">
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2>System Overview</h2>
+                  <p>Active master data and service activity</p>
+                </div>
+              </div>
+              <div class="overview-list">
+                <div><span>Projects</span><strong id="activeProjects">0</strong></div>
+                <div><span>Gensets</span><strong id="activeGensets">0</strong></div>
+                <div><span>Service Items</span><strong id="activeServiceItems">0</strong></div>
+                <div><span>Active Schedules</span><strong id="activeSchedules">0</strong></div>
+                <div><span>Service Records</span><strong id="serviceRecords">0</strong></div>
+                <div><span>Attachments</span><strong id="attachments">0</strong></div>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2>Next Due Services</h2>
+                  <p>Nearest scheduled maintenance dates</p>
+                </div>
+                <button class="text-button" data-go-view="maintenance" type="button">View all</button>
+              </div>
+              <div id="nextDueList" class="due-list">
+                <div class="empty-state">Loading service schedules...</div>
+              </div>
+            </section>
+          </div>
+
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>Recent Service Activity</h2>
+                <p>Latest completed maintenance records</p>
+              </div>
+              <button class="text-button" data-go-view="recent" type="button">View all</button>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th><th>Project</th><th>Genset</th><th>Service Item</th><th>Performed By</th><th>Work Order</th>
+                  </tr>
+                </thead>
+                <tbody id="dashboardRecentBody"></tbody>
+              </table>
+            </div>
+            <div class="empty-state hidden" id="dashboardRecentEmpty">No completed service records yet.</div>
+          </section>
+        </section>
+
+        <section class="view hidden" id="maintenanceView" data-view-panel="maintenance">
+          <section class="panel">
+            <div class="panel-header stack-mobile">
+              <div>
+                <h2>Service Status</h2>
+                <p>Calculated from the schedule start date or latest service record</p>
+              </div>
+              <div class="filter-row">
+                <label>
+                  <span>Status</span>
+                  <select id="statusFilter">
+                    <option value="ALL">All statuses</option>
+                    <option value="OVERDUE">Overdue</option>
+                    <option value="DUE_SOON">Due soon</option>
+                    <option value="OK">On schedule</option>
+                    <option value="NOT_SET">Not set</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Search</span>
+                  <input id="statusSearch" type="search" placeholder="Project, genset or service item">
+                </label>
+              </div>
+            </div>
+
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Status</th><th>Project</th><th>Genset</th><th>Service Item</th><th>Last Service</th><th>Next Due</th><th>Days</th><th>Period</th>
+                  </tr>
+                </thead>
+                <tbody id="statusTableBody"></tbody>
+              </table>
+            </div>
+            <div class="empty-state hidden" id="statusEmpty">No schedules match the selected filters.</div>
+            <div class="table-footer"><span id="statusCount">0 schedules</span></div>
+          </section>
+        </section>
+
+        <section class="view hidden" id="recentView" data-view-panel="recent">
+          <section class="panel">
+            <div class="panel-header stack-mobile">
+              <div>
+                <h2>Recent Service Records</h2>
+                <p>Completed maintenance history</p>
+              </div>
+              <label class="compact-field">
+                <span>Number of records</span>
+                <select id="recentLimit">
+                  <option value="10">10</option>
+                  <option value="20" selected>20</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                </select>
+              </label>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th><th>Project</th><th>Genset</th><th>Service Item</th><th>Engine Hours</th><th>Performed By</th><th>Work Order</th><th>Attachments</th>
+                  </tr>
+                </thead>
+                <tbody id="recentTableBody"></tbody>
+              </table>
+            </div>
+            <div class="empty-state hidden" id="recentEmpty">No completed service records yet.</div>
+          </section>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <div class="sidebar-backdrop hidden" id="sidebarBackdrop"></div>
+  <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

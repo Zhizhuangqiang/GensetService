@@ -1,0 +1,10 @@
+{
+  "name": "Genset Service Manager",
+  "short_name": "Genset Service",
+  "description": "Genset maintenance schedules, due dates, and service history.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f4f7f8",
+  "theme_color": "#0f766e"
+}
