@@ -17,6 +17,14 @@ const allowlist = (process.env.CORS_ORIGINS || "")
   .map((value) => value.trim())
   .filter(Boolean);
 
+const path = require("path");
+
+app.use(
+  express.static(
+    path.join(__dirname, "../public")
+  )
+);
+
 app.use(cors({
   origin(origin, callback) {
     if (!origin || allowlist.length === 0 || allowlist.includes(origin)) {
