@@ -3,20 +3,7 @@ const pool = require("../db");
 
 const router = express.Router();
 
-router.get("/:id", async (req, res, next) => {
-  try {
-    const result = await pool.query(`
-      SELECT *
-      FROM projects
-	  WHERE id = $1
-      ORDER BY name
-    `);
 
-    res.json(result.rows);
-  } catch (error) {
-    next(error);
-  }
-});
 
 router.get("/", async (req, res, next) => {
   try {
@@ -55,6 +42,38 @@ router.get("/", async (req, res, next) => {
       items: result.rows
     });
 
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/:id", async (req, res, next) => {
+  try {
+    try {
+    const id = Number.parseInt(req.params.id, 10);
+
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({
+        error: "Invalid project id"
+      });
+    }
+
+    const result = await pool.query(
+      `
+      SELECT *
+      FROM projects
+      WHERE id = $1
+      `,
+      [id]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({
+        error: "Project not found"
+      });
+    }
+
+    res.json(result.rows[0]);
   } catch (error) {
     next(error);
   }
