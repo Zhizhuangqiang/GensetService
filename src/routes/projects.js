@@ -20,10 +20,27 @@ router.get("/", async (req, res, next) => {
 router.get("/:id", async (req, res, next) => {
   try {
     const result = await pool.query(
-      `
-      SELECT *
-      FROM projects
-      WHERE id = $1
+      `SELECT
+        p.id,
+        p.code,
+        p.name,
+        p.active,
+        p.created_at,
+        p.updated_at,
+        COUNT(g.id)::int AS genset_count
+      FROM projects p
+      LEFT JOIN gensets g
+        ON g.project_id = p.id
+      GROUP BY
+        p.id,
+        p.code,
+        p.name,
+        p.active,
+        p.created_at,
+        p.updated_at
+      ORDER BY
+        p.active DESC,
+        p.name ASC
       `,
       [req.params.id]
     );
