@@ -32,6 +32,7 @@ const viewMetadata = {
     dashboard: ["Dashboard", "Genset maintenance overview"],
     maintenance: ["Service Status", "Current maintenance condition for every active schedule"],
     recent: ["Recent Service", "Completed genset maintenance records"]
+	systems: ["Systems","Projects, gensets, service items and schedules"]
 };
 
 function escapeHtml(value) {
