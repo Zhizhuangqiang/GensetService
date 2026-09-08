@@ -1,0 +1,20 @@
+{
+  "name": "maintenance-api-render",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Node.js REST API for the maintenance dashboard using Aiven PostgreSQL",
+  "main": "src/server.js",
+  "engines": { "node": ">=20 <25" },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "check": "node --check src/server.js && node --check src/app.js && node --check src/db.js && node --check src/routes/dashboard.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^5.1.0",
+    "helmet": "^8.1.0",
+    "pg": "^8.16.3"
+  }
+}
