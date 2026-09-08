@@ -420,7 +420,7 @@ async function loadSchedulesView() {
 const systemLoaders = {
   projects: loadProjectsView,
   gensets: loadGensetsView,
-  "service-items": loadServiceItemsView,
+  serviceitems: loadServiceItemsView,
   schedules: loadSchedulesView
 };
 
@@ -433,9 +433,7 @@ async function showSystem(systemKey) {
     await loader(); // fill the table first
     setView("systems"); // then reveal the panel
   } catch (error) {
-    console.error(error);
     showAlert(`Unable to load ${systemKey.replace("-", " ")}: ${error.message}`);
-    setView("systems");
   }
 }
 
@@ -505,6 +503,40 @@ async function registerServiceWorker() {
       console.warn("Service worker registration failed", error);
     }
   }
+}
+
+async function loadServiceItemsView() {
+  const data = await apiFetch("/api/serviceitems");
+  $("#systemTitle").textContent = "Service Items";
+  $("#systemSubtitle").textContent = "Maintenance task catalogue";
+  $("#systemsHead").innerHTML =
+    `<tr><th>ID</th><th>Name</th><th>Description</th><th>Active</th></tr>`;
+  $("#systemsBody").innerHTML = (data.items || []).map(i => `
+    <tr>
+      <td>${i.id}</td>
+      <td>${escapeHtml(i.name)}</td>
+      <td>${escapeHtml(i.description ?? "")}</td>
+      <td>${i.active}</td>
+    </tr>`).join("");
+}
+
+async function loadSchedulesView() {
+  const data = await apiFetch("/api/schedules?active=true");
+  $("#systemTitle").textContent = "Active Schedules";
+  $("#systemSubtitle").textContent = "Maintenance schedules per genset";
+  $("#systemsHead").innerHTML =
+    `<tr><th>ID</th><th>Project</th><th>Genset</th><th>Service Item</th><th>Start Date</th><th>Period</th><th>Warning</th></tr>`;
+  $("#systemsBody").innerHTML = (data.items || []).map(s => `
+    <tr>
+      <td>${s.id}</td>
+      <td>${escapeHtml(s.project_name ?? "")}</td>
+      <td><strong>${escapeHtml(s.genset_name ?? "")}</strong>${
+        s.equipment_tag ? `<br><small>${escapeHtml(s.equipment_tag)}</small>` : ""}</td>
+      <td>${escapeHtml(s.service_item_name ?? "")}</td>
+      <td>${formatDate(s.schedule_start_date)}</td>
+      <td>${formatNumber(s.period_days)} days</td>
+      <td>${formatNumber(s.warning_days)} days</td>
+    </tr>`).join("");
 }
 
 document.addEventListener("DOMContentLoaded", () => {
