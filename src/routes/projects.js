@@ -41,9 +41,7 @@ router.get("/:id", async (req, res, next) => {
       ORDER BY
         p.active DESC,
         p.name ASC
-      `,
-      [req.params.id]
-    );
+      `);
 
     if (result.rowCount === 0) {
       return res.status(404).json({
@@ -51,7 +49,10 @@ router.get("/:id", async (req, res, next) => {
       });
     }
 
-    res.json(result.rows[0]);
+    res.json({
+      count: result.rowCount,
+      items: result.rows
+    });
 
   } catch (error) {
     next(error);
