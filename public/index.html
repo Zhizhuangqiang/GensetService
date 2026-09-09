@@ -170,7 +170,6 @@
               </div>
             </section>
           </section>
-
           <section class="view hidden" id="maintenanceView" data-view-panel="maintenance">
             <section class="panel">
               <div class="panel-header stack-mobile">
@@ -224,7 +223,6 @@
               </div>
             </section>
           </section>
-
           <section class="view hidden" id="recentView" data-view-panel="recent">
             <section class="panel">
               <div class="panel-header stack-mobile">
@@ -269,7 +267,6 @@
               </div>
             </section>
           </section>
-
           <section class="view hidden" id="systemsView" data-view-panel="systems">
             <section class="panel">
               <div class="panel-header stack-mobile">
@@ -277,13 +274,13 @@
                   <h2 id="systemTitle">Projects</h2>
                   <p id="systemSubtitle">System master data</p>
                 </div>
-                 <div class="panel-header-actions">
+                <div class="panel-header-actions">
                   <button class="button primary hidden" id="addSystemButton" type="button">
                     + Add
                   </button>
-				  <button class="button hidden" id="addGensetButton" type="button">
-					+ Add Genset
-				  </button>
+                  <button class="button hidden" id="addGensetButton" type="button">
+                    + Add Genset
+                  </button>
                   <label class="compact-field">
                     <span>Category</span>
                     <select id="systemSelect">
@@ -309,9 +306,9 @@
         </main>
       </div>
     </div>
-
     <div class="sidebar-backdrop hidden" id="sidebarBackdrop"></div>
 
+    <!-- Add Service Record modal -->
     <div
       class="modal-backdrop hidden"
       id="recordModal"
@@ -376,6 +373,8 @@
         </form>
       </div>
     </div>
+
+    <!-- Add Project modal -->
     <div class="modal-backdrop hidden" id="projectModal" role="dialog"
          aria-modal="true" aria-labelledby="projectModalTitle">
       <div class="modal">
@@ -404,7 +403,9 @@
         </form>
       </div>
     </div>
-	<div
+
+    <!-- Add Genset modal -->
+    <div
       class="modal-backdrop hidden"
       id="gensetModal"
       role="dialog"
@@ -448,6 +449,105 @@
         </form>
       </div>
     </div>
+
+    <!-- Add Service Item modal -->
+    <div
+      class="modal-backdrop hidden"
+      id="serviceItemModal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="serviceItemModalTitle"
+    >
+      <div class="modal">
+        <div class="modal-header">
+          <h2 id="serviceItemModalTitle">Add Service Item</h2>
+          <button class="modal-close" id="serviceItemModalClose" type="button" aria-label="Close">
+            &times;
+          </button>
+        </div>
+        <form id="serviceItemForm">
+          <div class="modal-body">
+            <div class="form-grid">
+              <div class="field full">
+                <label for="svcItemName">Name <em>*</em></label>
+                <input id="svcItemName" type="text" required placeholder="e.g. Engine Oil Change" />
+              </div>
+              <div class="field full">
+                <label for="svcItemDescription">Description</label>
+                <textarea id="svcItemDescription" placeholder="Optional details"></textarea>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="button secondary" type="button" id="serviceItemCancel">Cancel</button>
+            <button class="button" type="submit" id="serviceItemSave">Save service item</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Add Schedule modal -->
+    <div
+      class="modal-backdrop hidden"
+      id="scheduleModal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="scheduleModalTitle"
+    >
+      <div class="modal">
+        <div class="modal-header">
+          <h2 id="scheduleModalTitle">Add Schedule</h2>
+          <button class="modal-close" id="scheduleModalClose" type="button" aria-label="Close">
+            &times;
+          </button>
+        </div>
+        <form id="scheduleForm">
+          <div class="modal-body">
+            <div class="form-grid">
+              <div class="field">
+                <label for="schedProject">Project <em>*</em></label>
+                <select id="schedProject" required>
+                  <option value="">Select project</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="schedGenset">Genset <em>*</em></label>
+                <select id="schedGenset" required disabled>
+                  <option value="">Select project first</option>
+                </select>
+              </div>
+              <div class="field full">
+                <label for="schedServiceItem">Service Item <em>*</em></label>
+                <select id="schedServiceItem" required>
+                  <option value="">Select service item</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="schedPeriod">Period (days) <em>*</em></label>
+                <input id="schedPeriod" type="number" min="1" step="1" required placeholder="e.g. 365" />
+              </div>
+              <div class="field">
+                <label for="schedWarning">Warning (days)</label>
+                <input id="schedWarning" type="number" min="0" step="1" value="30" />
+              </div>
+              <div class="field full">
+                <label for="schedStartDate">Start Date <em>*</em></label>
+                <input id="schedStartDate" type="date" required />
+              </div>
+              <div class="field full">
+                <label for="schedNotes">Notes</label>
+                <textarea id="schedNotes" placeholder="Optional notes"></textarea>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="button secondary" type="button" id="scheduleCancel">Cancel</button>
+            <button class="button" type="submit" id="scheduleSave">Save schedule</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
   </body>
 </html>

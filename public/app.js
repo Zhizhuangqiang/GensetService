@@ -1,5 +1,4 @@
 "use strict";
-
 /* ------------------------------------------------------------------
  * API endpoints in ONE place.
  * If your backend uses hyphenated paths (e.g. /api/service-status),
@@ -16,7 +15,6 @@ const ENDPOINTS = {
   activeSchedules: "/api/schedules?active=true",
   serviceRecords: "/api/servicerecords"
 };
-
 const state = {
   dashboard: null,
   statuses: [],
@@ -25,10 +23,8 @@ const state = {
   currentSystem: "projects",
   loading: false
 };
-
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
-
 const elements = {
   alert: $("#globalAlert"),
   toast: $("#toast"),
@@ -46,14 +42,12 @@ const elements = {
   recentLimit: $("#recentLimit"),
   systemSelect: $("#systemSelect")
 };
-
 const viewMetadata = {
   dashboard: ["Dashboard", "Genset maintenance overview"],
   maintenance: ["Service Status", "Current maintenance condition for every active schedule"],
   recent: ["Recent Service", "Completed genset maintenance records"],
   systems: ["Systems", "Projects, gensets, service items and schedules"]
 };
-
 /* ---------------- Helpers ---------------- */
 function escapeHtml(value) {
   return String(value ?? "")
@@ -63,7 +57,6 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
 }
-
 function formatDate(value) {
   if (!value) return "Not set";
   const dateOnly = String(value).slice(0, 10);
@@ -75,18 +68,15 @@ function formatDate(value) {
     day: "2-digit"
   }).format(new Date(year, month - 1, day));
 }
-
 function formatNumber(value, fallback = 0) {
   const number = Number(value);
   return Number.isFinite(number) ? number.toLocaleString() : fallback;
 }
-
 function itemsOf(data) {
   if (Array.isArray(data)) return data;
   if (Array.isArray(data?.items)) return data.items;
   return [];
 }
-
 function statusLabel(status) {
   return (
     {
@@ -97,14 +87,12 @@ function statusLabel(status) {
     }[status] || status
   );
 }
-
 function statusBadge(status) {
   const safeStatus = ["OVERDUE", "DUE_SOON", "OK", "NOT_SET"].includes(status)
     ? status
     : "NOT_SET";
   return `<span class="status-badge ${safeStatus}">${escapeHtml(statusLabel(safeStatus))}</span>`;
 }
-
 async function apiFetch(url) {
   const response = await fetch(url, { headers: { Accept: "application/json" } });
   const contentType = response.headers.get("content-type") || "";
@@ -116,24 +104,37 @@ async function apiFetch(url) {
   }
   return payload;
 }
-
+/* Generic POST helper for the create forms. */
+async function apiPost(url, payload) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify(payload)
+  });
+  const result = (response.headers.get("content-type") || "").includes("application/json")
+    ? await response.json()
+    : null;
+  if (!response.ok) {
+    throw new Error(
+      result?.error || result?.message || `Request failed with status ${response.status}`
+    );
+  }
+  return result;
+}
 /* ---------------- UI state ---------------- */
 function setConnection(isOnline) {
   elements.connectionDot.classList.toggle("online", isOnline);
   elements.connectionDot.classList.toggle("offline", !isOnline);
   elements.connectionText.textContent = isOnline ? "API connected" : "API unavailable";
 }
-
 function showAlert(message) {
   elements.alert.textContent = message;
   elements.alert.classList.remove("hidden");
 }
-
 function clearAlert() {
   elements.alert.classList.add("hidden");
   elements.alert.textContent = "";
 }
-
 let toastTimer;
 function showToast(message) {
   clearTimeout(toastTimer);
@@ -141,7 +142,6 @@ function showToast(message) {
   elements.toast.classList.remove("hidden");
   toastTimer = setTimeout(() => elements.toast.classList.add("hidden"), 3200);
 }
-
 function setView(view) {
   state.currentView = view;
   $$("[data-view-panel]").forEach((panel) =>
@@ -155,19 +155,16 @@ function setView(view) {
   elements.pageSubtitle.textContent = subtitle;
   closeSidebar();
 }
-
 function openSidebar() {
   elements.sidebar.classList.add("open");
   elements.sidebarBackdrop.classList.remove("hidden");
   elements.menuButton.setAttribute("aria-expanded", "true");
 }
-
 function closeSidebar() {
   elements.sidebar.classList.remove("open");
   elements.sidebarBackdrop.classList.add("hidden");
   elements.menuButton.setAttribute("aria-expanded", "false");
 }
-
 /* ---------------- Dashboard rendering ---------------- */
 function renderDashboard(summary) {
   const map = {
@@ -187,7 +184,6 @@ function renderDashboard(summary) {
     if (el) el.textContent = formatNumber(value);
   });
 }
-
 function renderNextDue() {
   const host = $("#nextDueList");
   const items = state.statuses
@@ -215,7 +211,6 @@ function renderNextDue() {
     )
     .join("");
 }
-
 function renderStatusTable() {
   const status = elements.statusFilter.value;
   const search = elements.statusSearch.value.trim().toLowerCase();
@@ -250,7 +245,6 @@ function renderStatusTable() {
   empty.classList.toggle("hidden", items.length > 0);
   $("#statusCount").textContent = `${items.length} schedule${items.length === 1 ? "" : "s"}`;
 }
-
 function recentRows(items) {
   return items
     .map(
@@ -269,7 +263,6 @@ function recentRows(items) {
     )
     .join("");
 }
-
 function renderRecent() {
   const fullBody = $("#recentTableBody");
   const dashboardBody = $("#dashboardRecentBody");
@@ -292,14 +285,12 @@ function renderRecent() {
   $("#recentEmpty").classList.toggle("hidden", state.recent.length > 0);
   $("#dashboardRecentEmpty").classList.toggle("hidden", state.recent.length > 0);
 }
-
 async function loadRecent() {
   const limit = Number(elements.recentLimit.value || 20);
   const data = await apiFetch(ENDPOINTS.recent(limit));
   state.recent = itemsOf(data);
   renderRecent();
 }
-
 async function loadAll({ notify = false } = {}) {
   if (state.loading) return;
   state.loading = true;
@@ -333,7 +324,6 @@ async function loadAll({ notify = false } = {}) {
     elements.refreshButton.textContent = "Refresh";
   }
 }
-
 /* ---------------------------------------------------------------
  * Systems views (single dispatcher, all four categories wired)
  * ------------------------------------------------------------- */
@@ -346,7 +336,6 @@ function renderSystemsTable(title, subtitle, headHtml, rows) {
   const empty = $("#systemsEmpty");
   if (empty) empty.classList.toggle("hidden", rows.trim().length > 0);
 }
-
 async function loadProjectsView() {
   const projects = itemsOf(await apiFetch(ENDPOINTS.projects));
   renderSystemsTable(
@@ -366,7 +355,6 @@ async function loadProjectsView() {
       .join("")
   );
 }
-
 async function loadGensetsView() {
   const gensets = itemsOf(await apiFetch(ENDPOINTS.gensets));
   renderSystemsTable(
@@ -387,7 +375,6 @@ async function loadGensetsView() {
       .join("")
   );
 }
-
 async function loadServiceItemsView() {
   const items = itemsOf(await apiFetch(ENDPOINTS.serviceItems));
   renderSystemsTable(
@@ -407,7 +394,6 @@ async function loadServiceItemsView() {
       .join("")
   );
 }
-
 async function loadSchedulesView() {
   const schedules = itemsOf(await apiFetch(ENDPOINTS.activeSchedules));
   renderSystemsTable(
@@ -433,14 +419,12 @@ async function loadSchedulesView() {
       .join("")
   );
 }
-
 const systemLoaders = {
   projects: loadProjectsView,
   gensets: loadGensetsView,
   serviceitems: loadServiceItemsView,
   schedules: loadSchedulesView
 };
-
 async function showSystem(systemKey) {
   const loader = systemLoaders[systemKey];
   if (!loader) return;
@@ -456,23 +440,19 @@ async function showSystem(systemKey) {
     showAlert(`Unable to load ${systemKey}: ${error.message}`);
   }
 }
-
 /* ---------------- Add Service Record (cascading) ---------------- */
 const recordModal = $("#recordModal");
 const recordForm = $("#recordForm");
 const recordCache = { gensets: [], schedules: [] };
-
 async function openRecordModal() {
   recordForm.reset();
   $("#recDate").value = new Date().toISOString().slice(0, 10);
-
   const gensetSelect = $("#recGenset");
   const scheduleSelect = $("#recSchedule");
   gensetSelect.innerHTML = '<option value="">Select project first</option>';
   gensetSelect.disabled = true;
   scheduleSelect.innerHTML = '<option value="">Select genset first</option>';
   scheduleSelect.disabled = true;
-
   try {
     const projectData = await apiFetch(ENDPOINTS.projects);
     $("#recProject").innerHTML =
@@ -485,26 +465,21 @@ async function openRecordModal() {
     showAlert(`Unable to open the record form: ${error.message}`);
   }
 }
-
 function closeRecordModal() {
   recordModal.classList.add("hidden");
 }
-
 // Project -> Gensets
 async function onProjectChange() {
   const projectId = Number($("#recProject").value);
   const gensetSelect = $("#recGenset");
   const scheduleSelect = $("#recSchedule");
-
   scheduleSelect.innerHTML = '<option value="">Select genset first</option>';
   scheduleSelect.disabled = true;
-
   if (!projectId) {
     gensetSelect.innerHTML = '<option value="">Select project first</option>';
     gensetSelect.disabled = true;
     return;
   }
-
   try {
     const gensetData = await apiFetch(ENDPOINTS.gensets);
     recordCache.gensets = itemsOf(gensetData).filter(
@@ -530,18 +505,15 @@ async function onProjectChange() {
     showAlert(`Unable to load gensets: ${error.message}`);
   }
 }
-
 // Genset -> Service Schedules
 async function onGensetChange() {
   const gensetId = Number($("#recGenset").value);
   const scheduleSelect = $("#recSchedule");
-
   if (!gensetId) {
     scheduleSelect.innerHTML = '<option value="">Select genset first</option>';
     scheduleSelect.disabled = true;
     return;
   }
-
   try {
     const scheduleData = await apiFetch(ENDPOINTS.activeSchedules);
     recordCache.schedules = itemsOf(scheduleData).filter(
@@ -567,13 +539,11 @@ async function onGensetChange() {
     showAlert(`Unable to load schedules: ${error.message}`);
   }
 }
-
 async function submitRecord(event) {
   event.preventDefault();
   const saveButton = $("#recordSave");
   const scheduleId = Number($("#recSchedule").value);
   const serviceDate = $("#recDate").value;
-
   if (!scheduleId) {
     showAlert("Project, genset and service schedule are required.");
     return;
@@ -582,8 +552,6 @@ async function submitRecord(event) {
     showAlert("Service date is required.");
     return;
   }
-
-  // service_records now links ONLY through service_schedule_id.
   const payload = {
     service_schedule_id: scheduleId,
     service_date: serviceDate,
@@ -592,23 +560,10 @@ async function submitRecord(event) {
     work_order_number: $("#recWorkOrder").value.trim() || null,
     remarks: $("#recRemarks").value.trim() || null
   };
-
   saveButton.disabled = true;
   saveButton.textContent = "Saving...";
   try {
-    const response = await fetch(ENDPOINTS.serviceRecords, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify(payload)
-    });
-    const result = (response.headers.get("content-type") || "").includes("application/json")
-      ? await response.json()
-      : null;
-    if (!response.ok) {
-      throw new Error(
-        result?.error || result?.message || `Request failed with status ${response.status}`
-      );
-    }
+    await apiPost(ENDPOINTS.serviceRecords, payload);
     closeRecordModal();
     showToast("Service record added");
     await loadAll({ notify: false });
@@ -619,11 +574,9 @@ async function submitRecord(event) {
     saveButton.textContent = "Save record";
   }
 }
-
 /* ---------------- Add Genset ---------------- */
 const gensetModal = $("#gensetModal");
 const gensetForm = $("#gensetForm");
-
 async function openGensetModal() {
   gensetForm.reset();
   try {
@@ -638,47 +591,30 @@ async function openGensetModal() {
     showAlert(`Unable to open the genset form: ${error.message}`);
   }
 }
-
 function closeGensetModal() {
   gensetModal.classList.add("hidden");
 }
-
 async function submitGenset(event) {
   event.preventDefault();
   const saveButton = $("#gensetSave");
-
   const payload = {
     project_id: Number($("#gensetProject").value),
     name: $("#gensetName").value.trim(),
     equipment_tag: $("#gensetTag").value.trim() || null,
     serial_number: $("#gensetSerial").value.trim() || null
   };
-
   if (!payload.project_id || !payload.name) {
     showAlert("Project and genset name are required.");
     return;
   }
-
   saveButton.disabled = true;
   saveButton.textContent = "Saving...";
   try {
-    const response = await fetch(ENDPOINTS.gensets, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify(payload)
-    });
-    const result = (response.headers.get("content-type") || "").includes("application/json")
-      ? await response.json()
-      : null;
-    if (!response.ok) {
-      throw new Error(
-        result?.error || result?.message || `Request failed with status ${response.status}`
-      );
-    }
+    await apiPost(ENDPOINTS.gensets, payload);
     closeGensetModal();
     showToast("Genset added");
-    await loadGensetsView();      // refresh the gensets table
-    await loadAll({ notify: false }); // refresh dashboard KPI counts
+    await loadGensetsView();
+    await loadAll({ notify: false });
   } catch (error) {
     showAlert(`Unable to save genset: ${error.message}`);
   } finally {
@@ -686,114 +622,17 @@ async function submitGenset(event) {
     saveButton.textContent = "Save genset";
   }
 }
-/* ---------------- Events ---------------- */
-function bindEvents() {
-  $$(".nav-item").forEach((item) =>
-    item.addEventListener("click", () => {
-      const view = item.dataset.view;
-      if (view === "systems") {
-        showSystem(state.currentSystem || "projects");
-      } else {
-        setView(view);
-      }
-    })
-  );
-
-  $$("[data-go-view]").forEach((item) =>
-    item.addEventListener("click", () => setView(item.dataset.goView))
-  );
-
-  $$("[data-status-filter]").forEach((card) =>
-    card.addEventListener("click", () => {
-      elements.statusFilter.value = card.dataset.statusFilter;
-      renderStatusTable();
-      setView("maintenance");
-    })
-  );
-
-  $$("[data-system-view]").forEach((item) =>
-    item.addEventListener("click", () => showSystem(item.dataset.systemView))
-  );
-
-  if (elements.systemSelect) {
-    elements.systemSelect.addEventListener("change", () =>
-      showSystem(elements.systemSelect.value)
-    );
-  }
-
-  elements.statusFilter.addEventListener("change", renderStatusTable);
-  elements.statusSearch.addEventListener("input", renderStatusTable);
-  elements.recentLimit.addEventListener("change", async () => {
-    try {
-      await loadRecent();
-    } catch (error) {
-      showAlert(`Unable to load recent records: ${error.message}`);
-    }
-  });
-
-  elements.refreshButton.addEventListener("click", () => loadAll({ notify: true }));
-
-  // Add Service Record modal
-  $("#addRecordButton").addEventListener("click", openRecordModal);
-  $("#recordModalClose").addEventListener("click", closeRecordModal);
-  $("#recordCancel").addEventListener("click", closeRecordModal);
-  recordForm.addEventListener("submit", submitRecord);
-  recordModal.addEventListener("click", (event) => {
-    if (event.target === recordModal) closeRecordModal();
-  });
-  // Cascading dropdowns (these bindings were MISSING before)
-  $("#recProject").addEventListener("change", onProjectChange);
-  $("#recGenset").addEventListener("change", onGensetChange);
-  $("#projectModalClose").addEventListener("click", closeProjectModal);
-  $("#projectCancel").addEventListener("click", closeProjectModal);
-    // Add Genset modal
-  $("#addGensetButton").addEventListener("click", openGensetModal);
-  $("#gensetModalClose").addEventListener("click", closeGensetModal);
-  $("#gensetCancel").addEventListener("click", closeGensetModal);
-  gensetForm.addEventListener("submit", submitGenset);
-  gensetModal.addEventListener("click", (event) => {
-    if (event.target === gensetModal) closeGensetModal();
-  });
-  projectForm.addEventListener("submit", submitProject);
-  projectModal.addEventListener("click", (event) => {
-    if (event.target === projectModal) closeProjectModal();
-  });
-
-  elements.menuButton.addEventListener("click", () =>
-    elements.sidebar.classList.contains("open") ? closeSidebar() : openSidebar()
-  );
-  elements.sidebarBackdrop.addEventListener("click", closeSidebar);
-
-  window.addEventListener("online", () => loadAll({ notify: true }));
-  window.addEventListener("offline", () => {
-    setConnection(false);
-    showAlert("The browser is offline. Previously loaded information remains visible.");
-  });
-}
-
-async function registerServiceWorker() {
-  if ("serviceWorker" in navigator) {
-    try {
-      await navigator.serviceWorker.register("/service-worker.js");
-    } catch (error) {
-      console.warn("Service worker registration failed", error);
-    }
-  }
-}
 /* ---------------- Add Project ---------------- */
 const projectModal = $("#projectModal");
 const projectForm = $("#projectForm");
-
 function openProjectModal() {
   projectForm.reset();
   projectModal.classList.remove("hidden");
   $("#projCode").focus();
 }
-
 function closeProjectModal() {
   projectModal.classList.add("hidden");
 }
-
 async function submitProject(event) {
   event.preventDefault();
   const saveButton = $("#projectSave");
@@ -808,21 +647,11 @@ async function submitProject(event) {
   saveButton.disabled = true;
   saveButton.textContent = "Saving...";
   try {
-    const response = await fetch("/api/projects", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify(payload)
-    });
-    const result = (response.headers.get("content-type") || "").includes("application/json")
-      ? await response.json()
-      : null;
-    if (!response.ok) {
-      throw new Error(result?.error || result?.message || `Request failed (${response.status})`);
-    }
+    await apiPost(ENDPOINTS.projects, payload);
     closeProjectModal();
     showToast("Project added");
-    await loadProjectsView();   // refresh the table
-    await loadAll();            // refresh dashboard counters
+    await loadProjectsView();
+    await loadAll({ notify: false });
   } catch (error) {
     showAlert(`Unable to save project: ${error.message}`);
   } finally {
@@ -830,21 +659,279 @@ async function submitProject(event) {
     saveButton.textContent = "Save project";
   }
 }
-
-// Show/hide the Add button depending on the selected category
+/* ---------------- Add Service Item ---------------- */
+const serviceItemModal = $("#serviceItemModal");
+const serviceItemForm = $("#serviceItemForm");
+function openServiceItemModal() {
+  serviceItemForm.reset();
+  serviceItemModal.classList.remove("hidden");
+  $("#svcItemName").focus();
+}
+function closeServiceItemModal() {
+  serviceItemModal.classList.add("hidden");
+}
+async function submitServiceItem(event) {
+  event.preventDefault();
+  const saveButton = $("#serviceItemSave");
+  const payload = {
+    name: $("#svcItemName").value.trim(),
+    description: $("#svcItemDescription").value.trim() || null
+  };
+  if (!payload.name) {
+    showAlert("Service item name is required.");
+    return;
+  }
+  saveButton.disabled = true;
+  saveButton.textContent = "Saving...";
+  try {
+    await apiPost(ENDPOINTS.serviceItems, payload);
+    closeServiceItemModal();
+    showToast("Service item added");
+    await loadServiceItemsView();
+    await loadAll({ notify: false });
+  } catch (error) {
+    showAlert(`Unable to save service item: ${error.message}`);
+  } finally {
+    saveButton.disabled = false;
+    saveButton.textContent = "Save service item";
+  }
+}
+/* ---------------- Add Schedule (cascading) ---------------- */
+const scheduleModal = $("#scheduleModal");
+const scheduleForm = $("#scheduleForm");
+const scheduleCache = { gensets: [] };
+async function openScheduleModal() {
+  scheduleForm.reset();
+  $("#schedWarning").value = 30;
+  $("#schedStartDate").value = new Date().toISOString().slice(0, 10);
+  const gensetSelect = $("#schedGenset");
+  gensetSelect.innerHTML = '<option value="">Select project first</option>';
+  gensetSelect.disabled = true;
+  try {
+    const [projectData, itemData] = await Promise.all([
+      apiFetch(ENDPOINTS.projects),
+      apiFetch(ENDPOINTS.serviceItems + "?active=true")
+    ]);
+    $("#schedProject").innerHTML =
+      '<option value="">Select project</option>' +
+      itemsOf(projectData)
+        .map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`)
+        .join("");
+    $("#schedServiceItem").innerHTML =
+      '<option value="">Select service item</option>' +
+      itemsOf(itemData)
+        .map((i) => `<option value="${i.id}">${escapeHtml(i.name)}</option>`)
+        .join("");
+    scheduleModal.classList.remove("hidden");
+  } catch (error) {
+    showAlert(`Unable to open the schedule form: ${error.message}`);
+  }
+}
+function closeScheduleModal() {
+  scheduleModal.classList.add("hidden");
+}
+// Project -> Gensets (schedule form)
+async function onScheduleProjectChange() {
+  const projectId = Number($("#schedProject").value);
+  const gensetSelect = $("#schedGenset");
+  if (!projectId) {
+    gensetSelect.innerHTML = '<option value="">Select project first</option>';
+    gensetSelect.disabled = true;
+    return;
+  }
+  try {
+    const gensetData = await apiFetch(ENDPOINTS.gensets);
+    scheduleCache.gensets = itemsOf(gensetData).filter(
+      (g) => Number(g.project_id) === projectId
+    );
+    if (!scheduleCache.gensets.length) {
+      gensetSelect.innerHTML = '<option value="">No gensets in this project</option>';
+      gensetSelect.disabled = true;
+      return;
+    }
+    gensetSelect.innerHTML =
+      '<option value="">Select genset</option>' +
+      scheduleCache.gensets
+        .map(
+          (g) =>
+            `<option value="${g.id}">${escapeHtml(g.name)}${
+              g.equipment_tag ? " (" + escapeHtml(g.equipment_tag) + ")" : ""
+            }</option>`
+        )
+        .join("");
+    gensetSelect.disabled = false;
+  } catch (error) {
+    showAlert(`Unable to load gensets: ${error.message}`);
+  }
+}
+async function submitSchedule(event) {
+  event.preventDefault();
+  const saveButton = $("#scheduleSave");
+  const payload = {
+    genset_id: Number($("#schedGenset").value),
+    service_item_id: Number($("#schedServiceItem").value),
+    period_days: Number($("#schedPeriod").value),
+    warning_days: $("#schedWarning").value === "" ? 30 : Number($("#schedWarning").value),
+    schedule_start_date: $("#schedStartDate").value,
+    notes: $("#schedNotes").value.trim() || null
+  };
+  if (!payload.genset_id || !payload.service_item_id) {
+    showAlert("Project, genset and service item are required.");
+    return;
+  }
+  if (!payload.period_days || payload.period_days <= 0) {
+    showAlert("Period (days) must be a positive number.");
+    return;
+  }
+  if (payload.warning_days > payload.period_days) {
+    showAlert("Warning days cannot exceed the period.");
+    return;
+  }
+  if (!payload.schedule_start_date) {
+    showAlert("Start date is required.");
+    return;
+  }
+  saveButton.disabled = true;
+  saveButton.textContent = "Saving...";
+  try {
+    await apiPost(ENDPOINTS.schedules, payload);
+    closeScheduleModal();
+    showToast("Schedule added");
+    await loadSchedulesView();
+    await loadAll({ notify: false });
+  } catch (error) {
+    showAlert(`Unable to save schedule: ${error.message}`);
+  } finally {
+    saveButton.disabled = false;
+    saveButton.textContent = "Save schedule";
+  }
+}
+/* ---------------- Add button dispatcher ---------------- */
+// Shows the correct "+ Add" button label/action for the selected category.
+// Gensets uses its own separate button (#addGensetButton), toggled in showSystem.
 function updateAddButton(systemKey) {
   const btn = $("#addSystemButton");
   if (!btn) return;
-  if (systemKey === "projects") {
-    btn.textContent = "+ Add Project";
+  const map = {
+    projects: { label: "+ Add Project", open: openProjectModal },
+    serviceitems: { label: "+ Add Service Item", open: openServiceItemModal },
+    schedules: { label: "+ Add Schedule", open: openScheduleModal }
+  };
+  const cfg = map[systemKey];
+  if (cfg) {
+    btn.textContent = cfg.label;
     btn.classList.remove("hidden");
-    btn.onclick = openProjectModal;
+    btn.onclick = cfg.open;
   } else {
     btn.classList.add("hidden");
     btn.onclick = null;
   }
 }
+/* ---------------- Events ---------------- */
+function bindEvents() {
+  $$(".nav-item").forEach((item) =>
+    item.addEventListener("click", () => {
+      const view = item.dataset.view;
+      if (view === "systems") {
+        showSystem(state.currentSystem || "projects");
+      } else {
+        setView(view);
+      }
+    })
+  );
+  $$("[data-go-view]").forEach((item) =>
+    item.addEventListener("click", () => setView(item.dataset.goView))
+  );
+  $$("[data-status-filter]").forEach((card) =>
+    card.addEventListener("click", () => {
+      elements.statusFilter.value = card.dataset.statusFilter;
+      renderStatusTable();
+      setView("maintenance");
+    })
+  );
+  $$("[data-system-view]").forEach((item) =>
+    item.addEventListener("click", () => showSystem(item.dataset.systemView))
+  );
+  if (elements.systemSelect) {
+    elements.systemSelect.addEventListener("change", () =>
+      showSystem(elements.systemSelect.value)
+    );
+  }
+  elements.statusFilter.addEventListener("change", renderStatusTable);
+  elements.statusSearch.addEventListener("input", renderStatusTable);
+  elements.recentLimit.addEventListener("change", async () => {
+    try {
+      await loadRecent();
+    } catch (error) {
+      showAlert(`Unable to load recent records: ${error.message}`);
+    }
+  });
+  elements.refreshButton.addEventListener("click", () => loadAll({ notify: true }));
 
+  // Add Service Record modal
+  $("#addRecordButton").addEventListener("click", openRecordModal);
+  $("#recordModalClose").addEventListener("click", closeRecordModal);
+  $("#recordCancel").addEventListener("click", closeRecordModal);
+  recordForm.addEventListener("submit", submitRecord);
+  recordModal.addEventListener("click", (event) => {
+    if (event.target === recordModal) closeRecordModal();
+  });
+  $("#recProject").addEventListener("change", onProjectChange);
+  $("#recGenset").addEventListener("change", onGensetChange);
+
+  // Add Project modal
+  $("#projectModalClose").addEventListener("click", closeProjectModal);
+  $("#projectCancel").addEventListener("click", closeProjectModal);
+  projectForm.addEventListener("submit", submitProject);
+  projectModal.addEventListener("click", (event) => {
+    if (event.target === projectModal) closeProjectModal();
+  });
+
+  // Add Genset modal
+  $("#addGensetButton").addEventListener("click", openGensetModal);
+  $("#gensetModalClose").addEventListener("click", closeGensetModal);
+  $("#gensetCancel").addEventListener("click", closeGensetModal);
+  gensetForm.addEventListener("submit", submitGenset);
+  gensetModal.addEventListener("click", (event) => {
+    if (event.target === gensetModal) closeGensetModal();
+  });
+
+  // Add Service Item modal
+  $("#serviceItemModalClose").addEventListener("click", closeServiceItemModal);
+  $("#serviceItemCancel").addEventListener("click", closeServiceItemModal);
+  serviceItemForm.addEventListener("submit", submitServiceItem);
+  serviceItemModal.addEventListener("click", (event) => {
+    if (event.target === serviceItemModal) closeServiceItemModal();
+  });
+
+  // Add Schedule modal
+  $("#scheduleModalClose").addEventListener("click", closeScheduleModal);
+  $("#scheduleCancel").addEventListener("click", closeScheduleModal);
+  scheduleForm.addEventListener("submit", submitSchedule);
+  scheduleModal.addEventListener("click", (event) => {
+    if (event.target === scheduleModal) closeScheduleModal();
+  });
+  $("#schedProject").addEventListener("change", onScheduleProjectChange);
+
+  elements.menuButton.addEventListener("click", () =>
+    elements.sidebar.classList.contains("open") ? closeSidebar() : openSidebar()
+  );
+  elements.sidebarBackdrop.addEventListener("click", closeSidebar);
+  window.addEventListener("online", () => loadAll({ notify: true }));
+  window.addEventListener("offline", () => {
+    setConnection(false);
+    showAlert("The browser is offline. Previously loaded information remains visible.");
+  });
+}
+async function registerServiceWorker() {
+  if ("serviceWorker" in navigator) {
+    try {
+      await navigator.serviceWorker.register("/service-worker.js");
+    } catch (error) {
+      console.warn("Service worker registration failed", error);
+    }
+  }
+}
 document.addEventListener("DOMContentLoaded", () => {
   bindEvents();
   registerServiceWorker();
