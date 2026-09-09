@@ -24,17 +24,19 @@ async function findProject(projectId) {
 
 // Check whether a genset name OR equipment_tag already exists within the
 // same project. Optionally exclude a genset id (used when updating).
+// NOTE: $2 and $3 are cast to ::text so PostgreSQL can determine their
+// type even when equipment_tag is NULL (fixes error 42P08).
 async function findDuplicate(projectId, name, equipmentTag, excludeId = null) {
   const result = await pool.query(
     `
     SELECT id, name, equipment_tag
     FROM public.gensets
     WHERE project_id = $1
-      AND ($4::int8 IS NULL OR id <> $4)
+      AND ($4::int8 IS NULL OR id <> $4::int8)
       AND (
-        LOWER(name) = LOWER($2)
-        OR ($3 IS NOT NULL AND equipment_tag IS NOT NULL
-            AND LOWER(equipment_tag) = LOWER($3))
+        LOWER(name) = LOWER($2::text)
+        OR ($3::text IS NOT NULL AND equipment_tag IS NOT NULL
+            AND LOWER(equipment_tag) = LOWER($3::text))
       )
     LIMIT 1
     `,
