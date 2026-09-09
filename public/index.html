@@ -11,7 +11,6 @@
     <title>Genset Service Manager</title>
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="stylesheet" href="/styles.css" />
-    <!-- FIX 2: proper closing tag + defer (was self-closing <script src="/app.js"/>) -->
     <script src="/app.js" defer></script>
   </head>
   <body>
@@ -40,7 +39,6 @@
           </button>
         </nav>
         <div class="sidebar-footer">
-          <!-- FIX: <span/> is not valid; use explicit close -->
           <span class="connection-dot" id="connectionDot" aria-hidden="true"></span>
           <span id="connectionText">Connecting...</span>
         </div>
@@ -68,9 +66,7 @@
           </div>
         </header>
         <main id="main-content" tabindex="-1">
-          <!-- FIX: <div/> is not valid; use explicit close -->
           <div class="alert hidden" id="globalAlert" role="alert"></div>
-
           <section class="view" id="dashboardView" data-view-panel="dashboard">
             <div class="metric-grid" aria-label="Maintenance summary">
               <button class="metric-card danger" data-status-filter="OVERDUE" type="button">
@@ -94,7 +90,6 @@
                 <span>Missing baseline date</span>
               </button>
             </div>
-
             <div class="overview-grid">
               <section class="panel">
                 <div class="panel-header">
@@ -104,7 +99,6 @@
                   </div>
                 </div>
                 <div class="overview-list">
-                  <!-- FIX 3/4: real <button> elements so clicks load data -->
                   <button class="overview-link" data-system-view="projects" type="button">
                     <span>Projects</span>
                     <strong id="activeProjects">0</strong>
@@ -131,7 +125,6 @@
                   </div>
                 </div>
               </section>
-
               <section class="panel">
                 <div class="panel-header">
                   <div>
@@ -147,7 +140,6 @@
                 </div>
               </section>
             </div>
-
             <section class="panel">
               <div class="panel-header">
                 <div>
@@ -170,7 +162,6 @@
                       <th>Work Order</th>
                     </tr>
                   </thead>
-                  <!-- FIX: <tbody/> is not valid; use explicit close -->
                   <tbody id="dashboardRecentBody"></tbody>
                 </table>
               </div>
@@ -241,19 +232,20 @@
                   <h2>Recent Service Records</h2>
                   <p>Completed maintenance history</p>
                 </div>
-				<button class="button" id="addRecordButton" type="button">
-                  + Add Record
-                </button>
-                <label class="compact-field">
-                  <span>Number of records</span>
-                  <select id="recentLimit">
-                    <option value="10">10</option>
-                    <!-- FIX: malformed <option> tags corrected -->
-                    <option value="20" selected>20</option>
-                    <option value="50">50</option>
-                    <option value="100">100</option>
-                  </select>
-                </label>
+                <div class="panel-actions">
+                  <button class="button" id="addRecordButton" type="button">
+                    + Add Record
+                  </button>
+                  <label class="compact-field">
+                    <span>Number of records</span>
+                    <select id="recentLimit">
+                      <option value="10">10</option>
+                      <option value="20" selected>20</option>
+                      <option value="50">50</option>
+                      <option value="100">100</option>
+                    </select>
+                  </label>
+                </div>
               </div>
               <div class="table-wrap">
                 <table>
@@ -311,26 +303,43 @@
         </main>
       </div>
     </div>
-    <!-- FIX: <div/> is not valid; use explicit close -->
+
     <div class="sidebar-backdrop hidden" id="sidebarBackdrop"></div>
-	    <div class="modal-backdrop hidden" id="recordModal" role="dialog"
-         aria-modal="true" aria-labelledby="recordModalTitle">
+
+    <div
+      class="modal-backdrop hidden"
+      id="recordModal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="recordModalTitle"
+    >
       <div class="modal">
         <div class="modal-header">
           <h2 id="recordModalTitle">Add Service Record</h2>
-          <button class="modal-close" id="recordModalClose" type="button"
-                  aria-label="Close">&times;</button>
+          <button class="modal-close" id="recordModalClose" type="button" aria-label="Close">
+            &times;
+          </button>
         </div>
         <form id="recordForm">
           <div class="modal-body">
             <div class="form-grid">
               <div class="field">
-                <label for="recGenset">Genset</label>
-                <select id="recGenset" required></select>
+                <label for="recProject">Project</label>
+                <select id="recProject" required>
+                  <option value="">Select project</option>
+                </select>
               </div>
               <div class="field">
-                <label for="recServiceItem">Service Item</label>
-                <select id="recServiceItem" required></select>
+                <label for="recGenset">Genset</label>
+                <select id="recGenset" required disabled>
+                  <option value="">Select project first</option>
+                </select>
+              </div>
+              <div class="field full">
+                <label for="recSchedule">Service Schedule</label>
+                <select id="recSchedule" required disabled>
+                  <option value="">Select genset first</option>
+                </select>
               </div>
               <div class="field">
                 <label for="recDate">Service Date</label>
@@ -361,6 +370,7 @@
         </form>
       </div>
     </div>
+
     <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
   </body>
 </html>

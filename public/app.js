@@ -1,5 +1,22 @@
 "use strict";
 
+/* ------------------------------------------------------------------
+ * API endpoints in ONE place.
+ * If your backend uses hyphenated paths (e.g. /api/service-status),
+ * change them here only — nothing else in the file needs editing.
+ * ------------------------------------------------------------------ */
+const ENDPOINTS = {
+  dashboard: "/api/dashboard",
+  serviceStatus: "/api/servicestatus",
+  recent: (limit) => `/api/dashboard/recent?limit=${encodeURIComponent(limit)}`,
+  projects: "/api/projects",
+  gensets: "/api/gensets",
+  serviceItems: "/api/serviceitems",
+  schedules: "/api/schedules",
+  activeSchedules: "/api/schedules?active=true",
+  serviceRecords: "/api/servicerecords"
+};
+
 const state = {
   dashboard: null,
   statuses: [],
@@ -30,7 +47,6 @@ const elements = {
   systemSelect: $("#systemSelect")
 };
 
-// FIX 1: added the missing comma after "recent" and included the "systems" entry.
 const viewMetadata = {
   dashboard: ["Dashboard", "Genset maintenance overview"],
   maintenance: ["Service Status", "Current maintenance condition for every active schedule"],
@@ -38,6 +54,7 @@ const viewMetadata = {
   systems: ["Systems", "Projects, gensets, service items and schedules"]
 };
 
+/* ---------------- Helpers ---------------- */
 function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -62,6 +79,12 @@ function formatDate(value) {
 function formatNumber(value, fallback = 0) {
   const number = Number(value);
   return Number.isFinite(number) ? number.toLocaleString() : fallback;
+}
+
+function itemsOf(data) {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.items)) return data.items;
+  return [];
 }
 
 function statusLabel(status) {
@@ -94,6 +117,7 @@ async function apiFetch(url) {
   return payload;
 }
 
+/* ---------------- UI state ---------------- */
 function setConnection(isOnline) {
   elements.connectionDot.classList.toggle("online", isOnline);
   elements.connectionDot.classList.toggle("offline", !isOnline);
@@ -126,7 +150,6 @@ function setView(view) {
   $$(".nav-item").forEach((item) =>
     item.classList.toggle("active", item.dataset.view === view)
   );
-  // Guard so a missing metadata entry never aborts navigation.
   const [title, subtitle] = viewMetadata[view] || ["", ""];
   elements.pageTitle.textContent = title;
   elements.pageSubtitle.textContent = subtitle;
@@ -145,6 +168,7 @@ function closeSidebar() {
   elements.menuButton.setAttribute("aria-expanded", "false");
 }
 
+/* ---------------- Dashboard rendering ---------------- */
 function renderDashboard(summary) {
   const map = {
     metricOverdue: summary.overdueItems,
@@ -271,8 +295,8 @@ function renderRecent() {
 
 async function loadRecent() {
   const limit = Number(elements.recentLimit.value || 20);
-  const data = await apiFetch(`/api/dashboard/recent?limit=${encodeURIComponent(limit)}`);
-  state.recent = Array.isArray(data.items) ? data.items : [];
+  const data = await apiFetch(ENDPOINTS.recent(limit));
+  state.recent = itemsOf(data);
   renderRecent();
 }
 
@@ -284,13 +308,11 @@ async function loadAll({ notify = false } = {}) {
   clearAlert();
   try {
     const [dashboard, statusData] = await Promise.all([
-      apiFetch("/api/dashboard"),
-      // FIX 5: keep the endpoint your backend actually serves.
-      // If your route is hyphenated, change this to "/api/service-status".
-      apiFetch("/api/servicestatus")
+      apiFetch(ENDPOINTS.dashboard),
+      apiFetch(ENDPOINTS.serviceStatus)
     ]);
     state.dashboard = dashboard;
-    state.statuses = Array.isArray(statusData.items) ? statusData.items : [];
+    state.statuses = itemsOf(statusData);
     await loadRecent();
     renderDashboard(dashboard);
     renderNextDue();
@@ -313,11 +335,8 @@ async function loadAll({ notify = false } = {}) {
 }
 
 /* ---------------------------------------------------------------
- * Systems views
- * FIX 3 & 4: a single dispatcher loads each dataset, all four
- * categories are wired, and the Systems tab loads data by default.
+ * Systems views (single dispatcher, all four categories wired)
  * ------------------------------------------------------------- */
-
 function renderSystemsTable(title, subtitle, headHtml, rows) {
   $("#systemTitle").textContent = title;
   const subtitleEl = $("#systemSubtitle");
@@ -328,14 +347,8 @@ function renderSystemsTable(title, subtitle, headHtml, rows) {
   if (empty) empty.classList.toggle("hidden", rows.trim().length > 0);
 }
 
-function itemsOf(data) {
-  if (Array.isArray(data)) return data;
-  if (Array.isArray(data?.items)) return data.items;
-  return [];
-}
-
 async function loadProjectsView() {
-  const projects = itemsOf(await apiFetch("/api/projects"));
+  const projects = itemsOf(await apiFetch(ENDPOINTS.projects));
   renderSystemsTable(
     "Projects",
     "Project master data",
@@ -355,7 +368,7 @@ async function loadProjectsView() {
 }
 
 async function loadGensetsView() {
-  const gensets = itemsOf(await apiFetch("/api/gensets"));
+  const gensets = itemsOf(await apiFetch(ENDPOINTS.gensets));
   renderSystemsTable(
     "Gensets",
     "Generator set master data",
@@ -376,10 +389,10 @@ async function loadGensetsView() {
 }
 
 async function loadServiceItemsView() {
-  const items = itemsOf(await apiFetch("/api/serviceitems"));
+  const items = itemsOf(await apiFetch(ENDPOINTS.serviceItems));
   renderSystemsTable(
     "Service Items",
-    "Maintenance activity definitions",
+    "Maintenance task catalogue",
     `<tr><th>ID</th><th>Name</th><th>Description</th><th>Active</th></tr>`,
     items
       .map(
@@ -396,18 +409,22 @@ async function loadServiceItemsView() {
 }
 
 async function loadSchedulesView() {
-  const schedules = itemsOf(await apiFetch("/api/schedules"));
+  const schedules = itemsOf(await apiFetch(ENDPOINTS.activeSchedules));
   renderSystemsTable(
     "Active Schedules",
     "Genset maintenance schedules",
-    `<tr><th>ID</th><th>Genset</th><th>Service Item</th><th>Period (days)</th><th>Warning (days)</th><th>Active</th></tr>`,
+    `<tr><th>ID</th><th>Project</th><th>Genset</th><th>Service Item</th><th>Start Date</th><th>Period (days)</th><th>Warning (days)</th><th>Active</th></tr>`,
     schedules
       .map(
         (s) => `
       <tr>
         <td>${escapeHtml(s.id)}</td>
-        <td>${escapeHtml(s.genset_name ?? "–")}</td>
+        <td>${escapeHtml(s.project_name ?? "–")}</td>
+        <td><strong>${escapeHtml(s.genset_name ?? "–")}</strong>${
+          s.equipment_tag ? `<br><small>${escapeHtml(s.equipment_tag)}</small>` : ""
+        }</td>
         <td>${escapeHtml(s.service_item_name ?? "–")}</td>
+        <td>${formatDate(s.schedule_start_date)}</td>
         <td>${formatNumber(s.period_days)}</td>
         <td>${formatNumber(s.warning_days)}</td>
         <td>${s.active ? "Yes" : "No"}</td>
@@ -430,15 +447,178 @@ async function showSystem(systemKey) {
   state.currentSystem = systemKey;
   if (elements.systemSelect) elements.systemSelect.value = systemKey;
   try {
-    await loader(); // fill the table first
-    setView("systems"); // then reveal the panel
+    await loader();
+    setView("systems");
   } catch (error) {
-    showAlert(`Unable to load ${systemKey.replace("-", " ")}: ${error.message}`);
+    showAlert(`Unable to load ${systemKey}: ${error.message}`);
   }
 }
 
+/* ---------------- Add Service Record (cascading) ---------------- */
+const recordModal = $("#recordModal");
+const recordForm = $("#recordForm");
+const recordCache = { gensets: [], schedules: [] };
+
+async function openRecordModal() {
+  recordForm.reset();
+  $("#recDate").value = new Date().toISOString().slice(0, 10);
+
+  const gensetSelect = $("#recGenset");
+  const scheduleSelect = $("#recSchedule");
+  gensetSelect.innerHTML = '<option value="">Select project first</option>';
+  gensetSelect.disabled = true;
+  scheduleSelect.innerHTML = '<option value="">Select genset first</option>';
+  scheduleSelect.disabled = true;
+
+  try {
+    const projectData = await apiFetch(ENDPOINTS.projects);
+    $("#recProject").innerHTML =
+      '<option value="">Select project</option>' +
+      itemsOf(projectData)
+        .map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`)
+        .join("");
+    recordModal.classList.remove("hidden");
+  } catch (error) {
+    showAlert(`Unable to open the record form: ${error.message}`);
+  }
+}
+
+function closeRecordModal() {
+  recordModal.classList.add("hidden");
+}
+
+// Project -> Gensets
+async function onProjectChange() {
+  const projectId = Number($("#recProject").value);
+  const gensetSelect = $("#recGenset");
+  const scheduleSelect = $("#recSchedule");
+
+  scheduleSelect.innerHTML = '<option value="">Select genset first</option>';
+  scheduleSelect.disabled = true;
+
+  if (!projectId) {
+    gensetSelect.innerHTML = '<option value="">Select project first</option>';
+    gensetSelect.disabled = true;
+    return;
+  }
+
+  try {
+    const gensetData = await apiFetch(ENDPOINTS.gensets);
+    recordCache.gensets = itemsOf(gensetData).filter(
+      (g) => Number(g.project_id) === projectId
+    );
+    if (!recordCache.gensets.length) {
+      gensetSelect.innerHTML = '<option value="">No gensets in this project</option>';
+      gensetSelect.disabled = true;
+      return;
+    }
+    gensetSelect.innerHTML =
+      '<option value="">Select genset</option>' +
+      recordCache.gensets
+        .map(
+          (g) =>
+            `<option value="${g.id}">${escapeHtml(g.name)}${
+              g.equipment_tag ? " (" + escapeHtml(g.equipment_tag) + ")" : ""
+            }</option>`
+        )
+        .join("");
+    gensetSelect.disabled = false;
+  } catch (error) {
+    showAlert(`Unable to load gensets: ${error.message}`);
+  }
+}
+
+// Genset -> Service Schedules
+async function onGensetChange() {
+  const gensetId = Number($("#recGenset").value);
+  const scheduleSelect = $("#recSchedule");
+
+  if (!gensetId) {
+    scheduleSelect.innerHTML = '<option value="">Select genset first</option>';
+    scheduleSelect.disabled = true;
+    return;
+  }
+
+  try {
+    const scheduleData = await apiFetch(ENDPOINTS.activeSchedules);
+    recordCache.schedules = itemsOf(scheduleData).filter(
+      (s) => Number(s.genset_id) === gensetId
+    );
+    if (!recordCache.schedules.length) {
+      scheduleSelect.innerHTML = '<option value="">No schedules for this genset</option>';
+      scheduleSelect.disabled = true;
+      return;
+    }
+    scheduleSelect.innerHTML =
+      '<option value="">Select service schedule</option>' +
+      recordCache.schedules
+        .map(
+          (s) =>
+            `<option value="${s.id}">${escapeHtml(s.service_item_name ?? "Service")}${
+              s.period_days ? " — every " + s.period_days + " days" : ""
+            }</option>`
+        )
+        .join("");
+    scheduleSelect.disabled = false;
+  } catch (error) {
+    showAlert(`Unable to load schedules: ${error.message}`);
+  }
+}
+
+async function submitRecord(event) {
+  event.preventDefault();
+  const saveButton = $("#recordSave");
+  const scheduleId = Number($("#recSchedule").value);
+  const serviceDate = $("#recDate").value;
+
+  if (!scheduleId) {
+    showAlert("Project, genset and service schedule are required.");
+    return;
+  }
+  if (!serviceDate) {
+    showAlert("Service date is required.");
+    return;
+  }
+
+  // service_records now links ONLY through service_schedule_id.
+  const payload = {
+    service_schedule_id: scheduleId,
+    service_date: serviceDate,
+    engine_hours: $("#recHours").value ? Number($("#recHours").value) : null,
+    performed_by: $("#recPerformedBy").value.trim() || null,
+    work_order_number: $("#recWorkOrder").value.trim() || null,
+    remarks: $("#recRemarks").value.trim() || null
+  };
+
+  saveButton.disabled = true;
+  saveButton.textContent = "Saving...";
+  try {
+    const response = await fetch(ENDPOINTS.serviceRecords, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const result = (response.headers.get("content-type") || "").includes("application/json")
+      ? await response.json()
+      : null;
+    if (!response.ok) {
+      throw new Error(
+        result?.error || result?.message || `Request failed with status ${response.status}`
+      );
+    }
+    closeRecordModal();
+    showToast("Service record added");
+    await loadAll({ notify: false });
+  } catch (error) {
+    showAlert(`Unable to save record: ${error.message}`);
+  } finally {
+    saveButton.disabled = false;
+    saveButton.textContent = "Save record";
+  }
+}
+
+/* ---------------- Events ---------------- */
 function bindEvents() {
-  // Sidebar navigation. The Systems tab loads data instead of an empty table.
   $$(".nav-item").forEach((item) =>
     item.addEventListener("click", () => {
       const view = item.dataset.view;
@@ -462,12 +642,10 @@ function bindEvents() {
     })
   );
 
-  // System Overview links on the dashboard.
   $$("[data-system-view]").forEach((item) =>
     item.addEventListener("click", () => showSystem(item.dataset.systemView))
   );
 
-  // Category selector inside the Systems view.
   if (elements.systemSelect) {
     elements.systemSelect.addEventListener("change", () =>
       showSystem(elements.systemSelect.value)
@@ -483,7 +661,10 @@ function bindEvents() {
       showAlert(`Unable to load recent records: ${error.message}`);
     }
   });
+
   elements.refreshButton.addEventListener("click", () => loadAll({ notify: true }));
+
+  // Add Service Record modal
   $("#addRecordButton").addEventListener("click", openRecordModal);
   $("#recordModalClose").addEventListener("click", closeRecordModal);
   $("#recordCancel").addEventListener("click", closeRecordModal);
@@ -491,10 +672,15 @@ function bindEvents() {
   recordModal.addEventListener("click", (event) => {
     if (event.target === recordModal) closeRecordModal();
   });
+  // Cascading dropdowns (these bindings were MISSING before)
+  $("#recProject").addEventListener("change", onProjectChange);
+  $("#recGenset").addEventListener("change", onGensetChange);
+
   elements.menuButton.addEventListener("click", () =>
     elements.sidebar.classList.contains("open") ? closeSidebar() : openSidebar()
   );
   elements.sidebarBackdrop.addEventListener("click", closeSidebar);
+
   window.addEventListener("online", () => loadAll({ notify: true }));
   window.addEventListener("offline", () => {
     setConnection(false);
@@ -510,114 +696,6 @@ async function registerServiceWorker() {
       console.warn("Service worker registration failed", error);
     }
   }
-}
-/* ---------------- Add Service Record ---------------- */
-const recordModal = $("#recordModal");
-const recordForm = $("#recordForm");
-
-async function openRecordModal() {
-  recordForm.reset();
-  $("#recDate").value = new Date().toISOString().slice(0, 10);
-  try {
-    const [gensetData, itemData] = await Promise.all([
-      apiFetch("/api/gensets"),
-      apiFetch("/api/serviceitems")
-    ]);
-    $("#recGenset").innerHTML =
-      '<option value="">Select genset</option>' +
-      itemsOf(gensetData).map((g) =>
-        `<option value="${g.id}">${escapeHtml(g.name)}${
-          g.equipment_tag ? " (" + escapeHtml(g.equipment_tag) + ")" : ""
-        }</option>`
-      ).join("");
-    $("#recServiceItem").innerHTML =
-      '<option value="">Select service item</option>' +
-      itemsOf(itemData).map((i) =>
-        `<option value="${i.id}">${escapeHtml(i.name)}</option>`
-      ).join("");
-    recordModal.classList.remove("hidden");
-  } catch (error) {
-    showAlert(`Unable to open the record form: ${error.message}`);
-  }
-}
-
-function closeRecordModal() {
-  recordModal.classList.add("hidden");
-}
-
-async function submitRecord(event) {
-  event.preventDefault();
-  const saveButton = $("#recordSave");
-  const payload = {
-    genset_id: Number($("#recGenset").value),
-    service_item_id: Number($("#recServiceItem").value),
-    service_date: $("#recDate").value,
-    engine_hours: $("#recHours").value ? Number($("#recHours").value) : null,
-    performed_by: $("#recPerformedBy").value.trim() || null,
-    work_order_number: $("#recWorkOrder").value.trim() || null,
-    remarks: $("#recRemarks").value.trim() || null
-  };
-  if (!payload.genset_id || !payload.service_item_id || !payload.service_date) {
-    showAlert("Genset, service item and service date are required.");
-    return;
-  }
-  saveButton.disabled = true;
-  saveButton.textContent = "Saving...";
-  try {
-    const response = await fetch("/api/servicerecords", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify(payload)
-    });
-    const result = (response.headers.get("content-type") || "").includes("application/json")
-      ? await response.json()
-      : null;
-    if (!response.ok) {
-      throw new Error(result?.error || result?.message || `Request failed with status ${response.status}`);
-    }
-    closeRecordModal();
-    showToast("Service record added");
-    await loadAll({ notify: false }); // refresh KPIs + status (new baseline date)
-    await loadRecent();               // refresh the recent tables
-  } catch (error) {
-    showAlert(`Unable to save record: ${error.message}`);
-  } finally {
-    saveButton.disabled = false;
-    saveButton.textContent = "Save record";
-  }
-}
-async function loadServiceItemsView() {
-  const data = await apiFetch("/api/serviceitems");
-  $("#systemTitle").textContent = "Service Items";
-  $("#systemSubtitle").textContent = "Maintenance task catalogue";
-  $("#systemsHead").innerHTML =
-    `<tr><th>ID</th><th>Name</th><th>Description</th><th>Active</th></tr>`;
-  $("#systemsBody").innerHTML = (data.items || []).map(i => `
-    <tr>
-      <td>${i.id}</td>
-      <td>${escapeHtml(i.name)}</td>
-      <td>${escapeHtml(i.description ?? "")}</td>
-      <td>${i.active}</td>
-    </tr>`).join("");
-}
-
-async function loadSchedulesView() {
-  const data = await apiFetch("/api/schedules?active=true");
-  $("#systemTitle").textContent = "Active Schedules";
-  $("#systemSubtitle").textContent = "Maintenance schedules per genset";
-  $("#systemsHead").innerHTML =
-    `<tr><th>ID</th><th>Project</th><th>Genset</th><th>Service Item</th><th>Start Date</th><th>Period</th><th>Warning</th></tr>`;
-  $("#systemsBody").innerHTML = (data.items || []).map(s => `
-    <tr>
-      <td>${s.id}</td>
-      <td>${escapeHtml(s.project_name ?? "")}</td>
-      <td><strong>${escapeHtml(s.genset_name ?? "")}</strong>${
-        s.equipment_tag ? `<br><small>${escapeHtml(s.equipment_tag)}</small>` : ""}</td>
-      <td>${escapeHtml(s.service_item_name ?? "")}</td>
-      <td>${formatDate(s.schedule_start_date)}</td>
-      <td>${formatNumber(s.period_days)} days</td>
-      <td>${formatNumber(s.warning_days)} days</td>
-    </tr>`).join("");
 }
 
 document.addEventListener("DOMContentLoaded", () => {
