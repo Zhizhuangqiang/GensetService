@@ -188,3 +188,19 @@ select:focus, input:focus, button:focus-visible { outline: 3px solid rgba(15,118
   .topbar h1 { font-size: 19px; }
   .topbar .button { padding: 8px 10px; }
 }
+
+/* ---- Add Service Record modal ---- */
+.modal-backdrop { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 20px; background: rgba(16,46,49,.55); }
+.modal { width: 100%; max-width: 540px; background: var(--panel); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+.modal-header { padding: 18px 20px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }
+.modal-header h2 { margin: 0; font-size: 17px; }
+.modal-close { border: 0; background: transparent; font-size: 24px; line-height: 1; color: var(--muted); }
+.modal-body { padding: 20px; }
+.form-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 14px; }
+.field { display: grid; gap: 5px; }
+.field.full { grid-column: 1 / -1; }
+.field label { color: var(--muted); font-size: 12px; }
+.field textarea { min-height: 74px; padding: 8px 10px; border: 1px solid #cdd8db; border-radius: 8px; font: inherit; resize: vertical; }
+.field select, .field input { min-width: 0; width: 100%; }
+.modal-footer { padding: 16px 20px; display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid var(--line); }
+@media (max-width: 520px) { .form-grid { grid-template-columns: 1fr; } }

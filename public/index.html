@@ -241,6 +241,9 @@
                   <h2>Recent Service Records</h2>
                   <p>Completed maintenance history</p>
                 </div>
+				<button class="button" id="addRecordButton" type="button">
+                  + Add Record
+                </button>
                 <label class="compact-field">
                   <span>Number of records</span>
                   <select id="recentLimit">
@@ -310,6 +313,54 @@
     </div>
     <!-- FIX: <div/> is not valid; use explicit close -->
     <div class="sidebar-backdrop hidden" id="sidebarBackdrop"></div>
+	    <div class="modal-backdrop hidden" id="recordModal" role="dialog"
+         aria-modal="true" aria-labelledby="recordModalTitle">
+      <div class="modal">
+        <div class="modal-header">
+          <h2 id="recordModalTitle">Add Service Record</h2>
+          <button class="modal-close" id="recordModalClose" type="button"
+                  aria-label="Close">&times;</button>
+        </div>
+        <form id="recordForm">
+          <div class="modal-body">
+            <div class="form-grid">
+              <div class="field">
+                <label for="recGenset">Genset</label>
+                <select id="recGenset" required></select>
+              </div>
+              <div class="field">
+                <label for="recServiceItem">Service Item</label>
+                <select id="recServiceItem" required></select>
+              </div>
+              <div class="field">
+                <label for="recDate">Service Date</label>
+                <input id="recDate" type="date" required />
+              </div>
+              <div class="field">
+                <label for="recHours">Engine Hours</label>
+                <input id="recHours" type="number" min="0" step="1" />
+              </div>
+              <div class="field">
+                <label for="recPerformedBy">Performed By</label>
+                <input id="recPerformedBy" type="text" />
+              </div>
+              <div class="field">
+                <label for="recWorkOrder">Work Order</label>
+                <input id="recWorkOrder" type="text" />
+              </div>
+              <div class="field full">
+                <label for="recRemarks">Remarks</label>
+                <textarea id="recRemarks"></textarea>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="button secondary" type="button" id="recordCancel">Cancel</button>
+            <button class="button" type="submit" id="recordSave">Save record</button>
+          </div>
+        </form>
+      </div>
+    </div>
     <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
   </body>
 </html>

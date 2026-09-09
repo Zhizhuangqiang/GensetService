@@ -8,6 +8,7 @@ const gensetsRouter = require("./routes/gensets");
 const servicestatusRouter = require("./routes/servicestatus");
 const serviceItemsRouter = require("./routes/serviceitems");
 const schedulesRouter    = require("./routes/schedules");
+const serviceRecordsRouter = require("./routes/servicerecords");
 
 const app = express();
 app.disable("x-powered-by");
@@ -74,6 +75,7 @@ app.use(
 
 app.use("/api/serviceitems", serviceItemsRouter);
 app.use("/api/schedules",     schedulesRouter);
+app.use("/api/servicerecords", serviceRecordsRouter);
 
 app.use((_req, res) => res.status(404).json({ error: "Route not found" }));
 

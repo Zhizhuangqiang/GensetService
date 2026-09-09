@@ -484,6 +484,13 @@ function bindEvents() {
     }
   });
   elements.refreshButton.addEventListener("click", () => loadAll({ notify: true }));
+  $("#addRecordButton").addEventListener("click", openRecordModal);
+  $("#recordModalClose").addEventListener("click", closeRecordModal);
+  $("#recordCancel").addEventListener("click", closeRecordModal);
+  recordForm.addEventListener("submit", submitRecord);
+  recordModal.addEventListener("click", (event) => {
+    if (event.target === recordModal) closeRecordModal();
+  });
   elements.menuButton.addEventListener("click", () =>
     elements.sidebar.classList.contains("open") ? closeSidebar() : openSidebar()
   );
@@ -504,7 +511,81 @@ async function registerServiceWorker() {
     }
   }
 }
+/* ---------------- Add Service Record ---------------- */
+const recordModal = $("#recordModal");
+const recordForm = $("#recordForm");
 
+async function openRecordModal() {
+  recordForm.reset();
+  $("#recDate").value = new Date().toISOString().slice(0, 10);
+  try {
+    const [gensetData, itemData] = await Promise.all([
+      apiFetch("/api/gensets"),
+      apiFetch("/api/serviceitems")
+    ]);
+    $("#recGenset").innerHTML =
+      '<option value="">Select genset</option>' +
+      itemsOf(gensetData).map((g) =>
+        `<option value="${g.id}">${escapeHtml(g.name)}${
+          g.equipment_tag ? " (" + escapeHtml(g.equipment_tag) + ")" : ""
+        }</option>`
+      ).join("");
+    $("#recServiceItem").innerHTML =
+      '<option value="">Select service item</option>' +
+      itemsOf(itemData).map((i) =>
+        `<option value="${i.id}">${escapeHtml(i.name)}</option>`
+      ).join("");
+    recordModal.classList.remove("hidden");
+  } catch (error) {
+    showAlert(`Unable to open the record form: ${error.message}`);
+  }
+}
+
+function closeRecordModal() {
+  recordModal.classList.add("hidden");
+}
+
+async function submitRecord(event) {
+  event.preventDefault();
+  const saveButton = $("#recordSave");
+  const payload = {
+    genset_id: Number($("#recGenset").value),
+    service_item_id: Number($("#recServiceItem").value),
+    service_date: $("#recDate").value,
+    engine_hours: $("#recHours").value ? Number($("#recHours").value) : null,
+    performed_by: $("#recPerformedBy").value.trim() || null,
+    work_order_number: $("#recWorkOrder").value.trim() || null,
+    remarks: $("#recRemarks").value.trim() || null
+  };
+  if (!payload.genset_id || !payload.service_item_id || !payload.service_date) {
+    showAlert("Genset, service item and service date are required.");
+    return;
+  }
+  saveButton.disabled = true;
+  saveButton.textContent = "Saving...";
+  try {
+    const response = await fetch("/api/servicerecords", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const result = (response.headers.get("content-type") || "").includes("application/json")
+      ? await response.json()
+      : null;
+    if (!response.ok) {
+      throw new Error(result?.error || result?.message || `Request failed with status ${response.status}`);
+    }
+    closeRecordModal();
+    showToast("Service record added");
+    await loadAll({ notify: false }); // refresh KPIs + status (new baseline date)
+    await loadRecent();               // refresh the recent tables
+  } catch (error) {
+    showAlert(`Unable to save record: ${error.message}`);
+  } finally {
+    saveButton.disabled = false;
+    saveButton.textContent = "Save record";
+  }
+}
 async function loadServiceItemsView() {
   const data = await apiFetch("/api/serviceitems");
   $("#systemTitle").textContent = "Service Items";
