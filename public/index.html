@@ -277,8 +277,14 @@
                   <h2 id="systemTitle">Projects</h2>
                   <p id="systemSubtitle">System master data</p>
                 </div>
-                <div class="filter-row">
-                  <label>
+                 <div class="panel-header-actions">
+                  <button class="button primary hidden" id="addSystemButton" type="button">
+                    + Add
+                  </button>
+				  <button class="button hidden" id="addGensetButton" type="button">
+					+ Add Genset
+				  </button>
+                  <label class="compact-field">
                     <span>Category</span>
                     <select id="systemSelect">
                       <option value="projects">Projects</option>
@@ -370,7 +376,78 @@
         </form>
       </div>
     </div>
-
+    <div class="modal-backdrop hidden" id="projectModal" role="dialog"
+         aria-modal="true" aria-labelledby="projectModalTitle">
+      <div class="modal">
+        <div class="modal-header">
+          <h2 id="projectModalTitle">Add Project</h2>
+          <button class="modal-close" id="projectModalClose" type="button"
+                  aria-label="Close">&times;</button>
+        </div>
+        <form id="projectForm">
+          <div class="modal-body">
+            <div class="form-grid">
+              <div class="field">
+                <label for="projCode">Code <em>*</em></label>
+                <input id="projCode" type="text" required placeholder="e.g. SRW" />
+              </div>
+              <div class="field">
+                <label for="projName">Name <em>*</em></label>
+                <input id="projName" type="text" required placeholder="e.g. Sunrise Wind" />
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="button ghost" type="button" id="projectCancel">Cancel</button>
+            <button class="button primary" type="submit" id="projectSave">Save project</button>
+          </div>
+        </form>
+      </div>
+    </div>
+	<div
+      class="modal-backdrop hidden"
+      id="gensetModal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="gensetModalTitle"
+    >
+      <div class="modal">
+        <div class="modal-header">
+          <h2 id="gensetModalTitle">Add Genset</h2>
+          <button class="modal-close" id="gensetModalClose" type="button" aria-label="Close">
+            &times;
+          </button>
+        </div>
+        <form id="gensetForm">
+          <div class="modal-body">
+            <div class="form-grid">
+              <div class="field full">
+                <label for="gensetProject">Project</label>
+                <select id="gensetProject" required>
+                  <option value="">Select project</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="gensetName">Genset Name</label>
+                <input id="gensetName" type="text" required />
+              </div>
+              <div class="field">
+                <label for="gensetTag">Equipment Tag</label>
+                <input id="gensetTag" type="text" />
+              </div>
+              <div class="field full">
+                <label for="gensetSerial">Serial Number</label>
+                <input id="gensetSerial" type="text" />
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="button secondary" type="button" id="gensetCancel">Cancel</button>
+            <button class="button" type="submit" id="gensetSave">Save genset</button>
+          </div>
+        </form>
+      </div>
+    </div>
     <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
   </body>
 </html>

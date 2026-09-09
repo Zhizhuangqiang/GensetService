@@ -445,7 +445,10 @@ async function showSystem(systemKey) {
   const loader = systemLoaders[systemKey];
   if (!loader) return;
   state.currentSystem = systemKey;
+  updateAddButton(systemKey);
   if (elements.systemSelect) elements.systemSelect.value = systemKey;
+  const addGensetButton = $("#addGensetButton");
+  if (addGensetButton) addGensetButton.classList.toggle("hidden", systemKey !== "gensets");
   try {
     await loader();
     setView("systems");
@@ -617,6 +620,72 @@ async function submitRecord(event) {
   }
 }
 
+/* ---------------- Add Genset ---------------- */
+const gensetModal = $("#gensetModal");
+const gensetForm = $("#gensetForm");
+
+async function openGensetModal() {
+  gensetForm.reset();
+  try {
+    const projectData = await apiFetch(ENDPOINTS.projects);
+    $("#gensetProject").innerHTML =
+      '<option value="">Select project</option>' +
+      itemsOf(projectData)
+        .map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`)
+        .join("");
+    gensetModal.classList.remove("hidden");
+  } catch (error) {
+    showAlert(`Unable to open the genset form: ${error.message}`);
+  }
+}
+
+function closeGensetModal() {
+  gensetModal.classList.add("hidden");
+}
+
+async function submitGenset(event) {
+  event.preventDefault();
+  const saveButton = $("#gensetSave");
+
+  const payload = {
+    project_id: Number($("#gensetProject").value),
+    name: $("#gensetName").value.trim(),
+    equipment_tag: $("#gensetTag").value.trim() || null,
+    serial_number: $("#gensetSerial").value.trim() || null
+  };
+
+  if (!payload.project_id || !payload.name) {
+    showAlert("Project and genset name are required.");
+    return;
+  }
+
+  saveButton.disabled = true;
+  saveButton.textContent = "Saving...";
+  try {
+    const response = await fetch(ENDPOINTS.gensets, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const result = (response.headers.get("content-type") || "").includes("application/json")
+      ? await response.json()
+      : null;
+    if (!response.ok) {
+      throw new Error(
+        result?.error || result?.message || `Request failed with status ${response.status}`
+      );
+    }
+    closeGensetModal();
+    showToast("Genset added");
+    await loadGensetsView();      // refresh the gensets table
+    await loadAll({ notify: false }); // refresh dashboard KPI counts
+  } catch (error) {
+    showAlert(`Unable to save genset: ${error.message}`);
+  } finally {
+    saveButton.disabled = false;
+    saveButton.textContent = "Save genset";
+  }
+}
 /* ---------------- Events ---------------- */
 function bindEvents() {
   $$(".nav-item").forEach((item) =>
@@ -675,6 +744,20 @@ function bindEvents() {
   // Cascading dropdowns (these bindings were MISSING before)
   $("#recProject").addEventListener("change", onProjectChange);
   $("#recGenset").addEventListener("change", onGensetChange);
+  $("#projectModalClose").addEventListener("click", closeProjectModal);
+  $("#projectCancel").addEventListener("click", closeProjectModal);
+    // Add Genset modal
+  $("#addGensetButton").addEventListener("click", openGensetModal);
+  $("#gensetModalClose").addEventListener("click", closeGensetModal);
+  $("#gensetCancel").addEventListener("click", closeGensetModal);
+  gensetForm.addEventListener("submit", submitGenset);
+  gensetModal.addEventListener("click", (event) => {
+    if (event.target === gensetModal) closeGensetModal();
+  });
+  projectForm.addEventListener("submit", submitProject);
+  projectModal.addEventListener("click", (event) => {
+    if (event.target === projectModal) closeProjectModal();
+  });
 
   elements.menuButton.addEventListener("click", () =>
     elements.sidebar.classList.contains("open") ? closeSidebar() : openSidebar()
@@ -695,6 +778,70 @@ async function registerServiceWorker() {
     } catch (error) {
       console.warn("Service worker registration failed", error);
     }
+  }
+}
+/* ---------------- Add Project ---------------- */
+const projectModal = $("#projectModal");
+const projectForm = $("#projectForm");
+
+function openProjectModal() {
+  projectForm.reset();
+  projectModal.classList.remove("hidden");
+  $("#projCode").focus();
+}
+
+function closeProjectModal() {
+  projectModal.classList.add("hidden");
+}
+
+async function submitProject(event) {
+  event.preventDefault();
+  const saveButton = $("#projectSave");
+  const payload = {
+    code: $("#projCode").value.trim(),
+    name: $("#projName").value.trim()
+  };
+  if (!payload.code || !payload.name) {
+    showAlert("Code and name are required.");
+    return;
+  }
+  saveButton.disabled = true;
+  saveButton.textContent = "Saving...";
+  try {
+    const response = await fetch("/api/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const result = (response.headers.get("content-type") || "").includes("application/json")
+      ? await response.json()
+      : null;
+    if (!response.ok) {
+      throw new Error(result?.error || result?.message || `Request failed (${response.status})`);
+    }
+    closeProjectModal();
+    showToast("Project added");
+    await loadProjectsView();   // refresh the table
+    await loadAll();            // refresh dashboard counters
+  } catch (error) {
+    showAlert(`Unable to save project: ${error.message}`);
+  } finally {
+    saveButton.disabled = false;
+    saveButton.textContent = "Save project";
+  }
+}
+
+// Show/hide the Add button depending on the selected category
+function updateAddButton(systemKey) {
+  const btn = $("#addSystemButton");
+  if (!btn) return;
+  if (systemKey === "projects") {
+    btn.textContent = "+ Add Project";
+    btn.classList.remove("hidden");
+    btn.onclick = openProjectModal;
+  } else {
+    btn.classList.add("hidden");
+    btn.onclick = null;
   }
 }
 

@@ -3,6 +3,26 @@ const pool = require("../db");
 const router = express.Router();
 
 /*
+ * Translates a PostgreSQL unique-violation (23505) into a friendly
+ * 409 response. Returns true if it handled the error.
+ */
+function handleDuplicate(error, res) {
+  if (error && error.code === "23505") {
+    // error.constraint may be e.g. projects_code_key or projects_name_key
+    const field =
+      error.constraint && error.constraint.includes("name")
+        ? "name"
+        : "code";
+    res.status(409).json({
+      error: `A project with this ${field} already exists`,
+      field
+    });
+    return true;
+  }
+  return false;
+}
+
+/*
  * GET /api/projects
  * Optional: ?active=true | ?active=false
  * Returns all projects with a count of their gensets.
@@ -101,6 +121,7 @@ router.post("/", async (req, res, next) => {
 
     res.status(201).json(result.rows[0]);
   } catch (error) {
+    if (handleDuplicate(error, res)) return;
     next(error);
   }
 });
@@ -144,6 +165,7 @@ router.put("/:id", async (req, res, next) => {
 
     res.json(result.rows[0]);
   } catch (error) {
+    if (handleDuplicate(error, res)) return;
     next(error);
   }
 });
