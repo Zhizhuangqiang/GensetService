@@ -115,6 +115,10 @@
                     <span>Active Schedules</span>
                     <strong id="activeSchedules">0</strong>
                   </button>
+                  <button class="overview-link" data-system-view="enginehours" type="button">
+                    <span>Engine Hours</span>
+                    <strong id="engineHoursCount">0</strong>
+                  </button>
                   <div class="overview-static">
                     <span>Service Records</span>
                     <strong id="serviceRecords">0</strong>
@@ -287,6 +291,7 @@
                       <option value="gensets">Gensets</option>
                       <option value="serviceitems">Service Items</option>
                       <option value="schedules">Active Schedules</option>
+                      <option value="enginehours">Engine Hours</option>
                     </select>
                   </label>
                 </div>
@@ -306,7 +311,6 @@
       </div>
     </div>
     <div class="sidebar-backdrop hidden" id="sidebarBackdrop"></div>
-
     <!-- Add Service Record modal -->
     <div
       class="modal-backdrop hidden"
@@ -368,7 +372,6 @@
         </form>
       </div>
     </div>
-
     <!-- Add Project modal -->
     <div class="modal-backdrop hidden" id="projectModal" role="dialog"
          aria-modal="true" aria-labelledby="projectModalTitle">
@@ -398,7 +401,6 @@
         </form>
       </div>
     </div>
-
     <!-- Add Genset modal -->
     <div
       class="modal-backdrop hidden"
@@ -444,7 +446,6 @@
         </form>
       </div>
     </div>
-
     <!-- Add Service Item modal -->
     <div
       class="modal-backdrop hidden"
@@ -480,7 +481,6 @@
         </form>
       </div>
     </div>
-
     <!-- Add Schedule modal -->
     <div
       class="modal-backdrop hidden"
@@ -542,7 +542,49 @@
         </form>
       </div>
     </div>
-
+    <!-- Add Engine Hours modal -->
+    <div
+      class="modal-backdrop hidden"
+      id="engineHoursModal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="engineHoursModalTitle"
+    >
+      <div class="modal">
+        <div class="modal-header">
+          <h2 id="engineHoursModalTitle">Add Engine Hours</h2>
+          <button class="modal-close" id="engineHoursModalClose" type="button" aria-label="Close">
+            &times;
+          </button>
+        </div>
+        <form id="engineHoursForm">
+          <div class="modal-body">
+            <div class="form-grid">
+              <div class="field">
+                <label for="ehProject">Project <em>*</em></label>
+                <select id="ehProject" required>
+                  <option value="">Select project</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="ehGenset">Genset <em>*</em></label>
+                <select id="ehGenset" required disabled>
+                  <option value="">Select project first</option>
+                </select>
+              </div>
+              <div class="field full">
+                <label for="ehHours">Engine Hours <em>*</em></label>
+                <input id="ehHours" type="number" min="0" step="0.1" required placeholder="e.g. 1250.5" />
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="button secondary" type="button" id="engineHoursCancel">Cancel</button>
+            <button class="button" type="submit" id="engineHoursSave">Save reading</button>
+          </div>
+        </form>
+      </div>
+    </div>
     <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
   </body>
 </html>

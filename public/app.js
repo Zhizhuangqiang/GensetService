@@ -1,8 +1,6 @@
 "use strict";
 /* ------------------------------------------------------------------
  * API endpoints in ONE place.
- * If your backend uses hyphenated paths (e.g. /api/service-status),
- * change them here only — nothing else in the file needs editing.
  * ------------------------------------------------------------------ */
 const ENDPOINTS = {
   dashboard: "/api/dashboard",
@@ -13,7 +11,8 @@ const ENDPOINTS = {
   serviceItems: "/api/serviceitems",
   schedules: "/api/schedules",
   activeSchedules: "/api/schedules?active=true",
-  serviceRecords: "/api/servicerecords"
+  serviceRecords: "/api/servicerecords",
+  engineHours: "/api/enginehours"
 };
 const state = {
   dashboard: null,
@@ -68,6 +67,18 @@ function formatDate(value) {
     day: "2-digit"
   }).format(new Date(year, month - 1, day));
 }
+function formatDateTime(value) {
+  if (!value) return "–";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return escapeHtml(value);
+  return new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(d);
+}
 function formatNumber(value, fallback = 0) {
   const number = Number(value);
   return Number.isFinite(number) ? number.toLocaleString() : fallback;
@@ -120,6 +131,43 @@ async function apiPost(url, payload) {
     );
   }
   return result;
+}
+/* Populate a <select> with projects. Returns the loaded projects. */
+async function fillProjectSelect(selectId) {
+  const projects = itemsOf(await apiFetch(ENDPOINTS.projects));
+  $(selectId).innerHTML =
+    '<option value="">Select project</option>' +
+    projects.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join("");
+  return projects;
+}
+/* Fill a genset <select> with gensets in the given project. */
+async function fillGensetsForProject(projectId, selectId) {
+  const select = $(selectId);
+  if (!projectId) {
+    select.innerHTML = '<option value="">Select project first</option>';
+    select.disabled = true;
+    return [];
+  }
+  const gensets = itemsOf(await apiFetch(ENDPOINTS.gensets)).filter(
+    (g) => Number(g.project_id) === Number(projectId)
+  );
+  if (!gensets.length) {
+    select.innerHTML = '<option value="">No gensets in this project</option>';
+    select.disabled = true;
+    return [];
+  }
+  select.innerHTML =
+    '<option value="">Select genset</option>' +
+    gensets
+      .map(
+        (g) =>
+          `<option value="${g.id}">${escapeHtml(g.name)}${
+            g.equipment_tag ? " (" + escapeHtml(g.equipment_tag) + ")" : ""
+          }</option>`
+      )
+      .join("");
+  select.disabled = false;
+  return gensets;
 }
 /* ---------------- UI state ---------------- */
 function setConnection(isOnline) {
@@ -290,6 +338,16 @@ async function loadRecent() {
   state.recent = itemsOf(data);
   renderRecent();
 }
+async function loadEngineHoursCount() {
+  try {
+    const data = await apiFetch(ENDPOINTS.engineHours);
+    const el = $("#engineHoursCount");
+    if (el) el.textContent = formatNumber(data.count ?? itemsOf(data).length);
+  } catch (error) {
+    // Non-fatal for the dashboard; leave the count as-is.
+    console.warn("Engine hours count unavailable", error);
+  }
+}
 async function loadAll({ notify = false } = {}) {
   if (state.loading) return;
   state.loading = true;
@@ -307,6 +365,7 @@ async function loadAll({ notify = false } = {}) {
     renderDashboard(dashboard);
     renderNextDue();
     renderStatusTable();
+    loadEngineHoursCount();
     setConnection(true);
     elements.lastUpdated.textContent = `Updated ${new Intl.DateTimeFormat(undefined, {
       hour: "2-digit",
@@ -324,7 +383,7 @@ async function loadAll({ notify = false } = {}) {
   }
 }
 /* ---------------------------------------------------------------
- * Systems views (single dispatcher, all four categories wired)
+ * Systems views (single dispatcher)
  * ------------------------------------------------------------- */
 function renderSystemsTable(title, subtitle, headHtml, rows) {
   $("#systemTitle").textContent = title;
@@ -418,11 +477,34 @@ async function loadSchedulesView() {
       .join("")
   );
 }
+async function loadEngineHoursView() {
+  const readings = itemsOf(await apiFetch(ENDPOINTS.engineHours));
+  renderSystemsTable(
+    "Engine Hours",
+    "Genset engine-hour readings",
+    `<tr><th>ID</th><th>Project</th><th>Genset</th><th>Hours</th><th>Recorded</th></tr>`,
+    readings
+      .map(
+        (r) => `
+      <tr>
+        <td>${escapeHtml(r.id)}</td>
+        <td>${escapeHtml(r.project_name ?? "–")}</td>
+        <td><strong>${escapeHtml(r.genset_name ?? "–")}</strong>${
+          r.equipment_tag ? `<br><small>${escapeHtml(r.equipment_tag)}</small>` : ""
+        }</td>
+        <td>${formatNumber(r.hours)}</td>
+        <td>${formatDateTime(r.created_at)}</td>
+      </tr>`
+      )
+      .join("")
+  );
+}
 const systemLoaders = {
   projects: loadProjectsView,
   gensets: loadGensetsView,
   serviceitems: loadServiceItemsView,
-  schedules: loadSchedulesView
+  schedules: loadSchedulesView,
+  enginehours: loadEngineHoursView
 };
 async function showSystem(systemKey) {
   const loader = systemLoaders[systemKey];
@@ -453,12 +535,7 @@ async function openRecordModal() {
   scheduleSelect.innerHTML = '<option value="">Select genset first</option>';
   scheduleSelect.disabled = true;
   try {
-    const projectData = await apiFetch(ENDPOINTS.projects);
-    $("#recProject").innerHTML =
-      '<option value="">Select project</option>' +
-      itemsOf(projectData)
-        .map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`)
-        .join("");
+    await fillProjectSelect("#recProject");
     recordModal.classList.remove("hidden");
   } catch (error) {
     showAlert(`Unable to open the record form: ${error.message}`);
@@ -467,44 +544,17 @@ async function openRecordModal() {
 function closeRecordModal() {
   recordModal.classList.add("hidden");
 }
-// Project -> Gensets
 async function onProjectChange() {
   const projectId = Number($("#recProject").value);
-  const gensetSelect = $("#recGenset");
   const scheduleSelect = $("#recSchedule");
   scheduleSelect.innerHTML = '<option value="">Select genset first</option>';
   scheduleSelect.disabled = true;
-  if (!projectId) {
-    gensetSelect.innerHTML = '<option value="">Select project first</option>';
-    gensetSelect.disabled = true;
-    return;
-  }
   try {
-    const gensetData = await apiFetch(ENDPOINTS.gensets);
-    recordCache.gensets = itemsOf(gensetData).filter(
-      (g) => Number(g.project_id) === projectId
-    );
-    if (!recordCache.gensets.length) {
-      gensetSelect.innerHTML = '<option value="">No gensets in this project</option>';
-      gensetSelect.disabled = true;
-      return;
-    }
-    gensetSelect.innerHTML =
-      '<option value="">Select genset</option>' +
-      recordCache.gensets
-        .map(
-          (g) =>
-            `<option value="${g.id}">${escapeHtml(g.name)}${
-              g.equipment_tag ? " (" + escapeHtml(g.equipment_tag) + ")" : ""
-            }</option>`
-        )
-        .join("");
-    gensetSelect.disabled = false;
+    recordCache.gensets = await fillGensetsForProject(projectId, "#recGenset");
   } catch (error) {
     showAlert(`Unable to load gensets: ${error.message}`);
   }
 }
-// Genset -> Service Schedules
 async function onGensetChange() {
   const gensetId = Number($("#recGenset").value);
   const scheduleSelect = $("#recSchedule");
@@ -578,12 +628,7 @@ const gensetForm = $("#gensetForm");
 async function openGensetModal() {
   gensetForm.reset();
   try {
-    const projectData = await apiFetch(ENDPOINTS.projects);
-    $("#gensetProject").innerHTML =
-      '<option value="">Select project</option>' +
-      itemsOf(projectData)
-        .map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`)
-        .join("");
+    await fillProjectSelect("#gensetProject");
     gensetModal.classList.remove("hidden");
   } catch (error) {
     showAlert(`Unable to open the genset form: ${error.message}`);
@@ -706,15 +751,10 @@ async function openScheduleModal() {
   gensetSelect.innerHTML = '<option value="">Select project first</option>';
   gensetSelect.disabled = true;
   try {
-    const [projectData, itemData] = await Promise.all([
-      apiFetch(ENDPOINTS.projects),
+    const [, itemData] = await Promise.all([
+      fillProjectSelect("#schedProject"),
       apiFetch(ENDPOINTS.serviceItems + "?active=true")
     ]);
-    $("#schedProject").innerHTML =
-      '<option value="">Select project</option>' +
-      itemsOf(projectData)
-        .map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`)
-        .join("");
     $("#schedServiceItem").innerHTML =
       '<option value="">Select service item</option>' +
       itemsOf(itemData)
@@ -728,36 +768,10 @@ async function openScheduleModal() {
 function closeScheduleModal() {
   scheduleModal.classList.add("hidden");
 }
-// Project -> Gensets (schedule form)
 async function onScheduleProjectChange() {
   const projectId = Number($("#schedProject").value);
-  const gensetSelect = $("#schedGenset");
-  if (!projectId) {
-    gensetSelect.innerHTML = '<option value="">Select project first</option>';
-    gensetSelect.disabled = true;
-    return;
-  }
   try {
-    const gensetData = await apiFetch(ENDPOINTS.gensets);
-    scheduleCache.gensets = itemsOf(gensetData).filter(
-      (g) => Number(g.project_id) === projectId
-    );
-    if (!scheduleCache.gensets.length) {
-      gensetSelect.innerHTML = '<option value="">No gensets in this project</option>';
-      gensetSelect.disabled = true;
-      return;
-    }
-    gensetSelect.innerHTML =
-      '<option value="">Select genset</option>' +
-      scheduleCache.gensets
-        .map(
-          (g) =>
-            `<option value="${g.id}">${escapeHtml(g.name)}${
-              g.equipment_tag ? " (" + escapeHtml(g.equipment_tag) + ")" : ""
-            }</option>`
-        )
-        .join("");
-    gensetSelect.disabled = false;
+    scheduleCache.gensets = await fillGensetsForProject(projectId, "#schedGenset");
   } catch (error) {
     showAlert(`Unable to load gensets: ${error.message}`);
   }
@@ -804,8 +818,63 @@ async function submitSchedule(event) {
     saveButton.textContent = "Save schedule";
   }
 }
+/* ---------------- Add Engine Hours (cascading) ---------------- */
+const engineHoursModal = $("#engineHoursModal");
+const engineHoursForm = $("#engineHoursForm");
+async function openEngineHoursModal() {
+  engineHoursForm.reset();
+  const gensetSelect = $("#ehGenset");
+  gensetSelect.innerHTML = '<option value="">Select project first</option>';
+  gensetSelect.disabled = true;
+  try {
+    await fillProjectSelect("#ehProject");
+    engineHoursModal.classList.remove("hidden");
+  } catch (error) {
+    showAlert(`Unable to open the engine hours form: ${error.message}`);
+  }
+}
+function closeEngineHoursModal() {
+  engineHoursModal.classList.add("hidden");
+}
+async function onEngineHoursProjectChange() {
+  const projectId = Number($("#ehProject").value);
+  try {
+    await fillGensetsForProject(projectId, "#ehGenset");
+  } catch (error) {
+    showAlert(`Unable to load gensets: ${error.message}`);
+  }
+}
+async function submitEngineHours(event) {
+  event.preventDefault();
+  const saveButton = $("#engineHoursSave");
+  const payload = {
+    genset_id: Number($("#ehGenset").value),
+    hours: $("#ehHours").value === "" ? null : Number($("#ehHours").value)
+  };
+  if (!payload.genset_id) {
+    showAlert("Project and genset are required.");
+    return;
+  }
+  if (payload.hours == null || !Number.isFinite(payload.hours) || payload.hours < 0) {
+    showAlert("Engine hours must be zero or greater.");
+    return;
+  }
+  saveButton.disabled = true;
+  saveButton.textContent = "Saving...";
+  try {
+    await apiPost(ENDPOINTS.engineHours, payload);
+    closeEngineHoursModal();
+    showToast("Engine hours reading added");
+    await loadEngineHoursView();
+    await loadEngineHoursCount();
+  } catch (error) {
+    showAlert(`Unable to save engine hours: ${error.message}`);
+  } finally {
+    saveButton.disabled = false;
+    saveButton.textContent = "Save reading";
+  }
+}
 /* ---------------- Add button dispatcher ---------------- */
-// Shows the correct "+ Add" button label/action for the selected category.
 // Gensets uses its own separate button (#addGensetButton), toggled in showSystem.
 function updateAddButton(systemKey) {
   const btn = $("#addSystemButton");
@@ -813,7 +882,8 @@ function updateAddButton(systemKey) {
   const map = {
     projects: { label: "+ Add Project", open: openProjectModal },
     serviceitems: { label: "+ Add Service Item", open: openServiceItemModal },
-    schedules: { label: "+ Add Schedule", open: openScheduleModal }
+    schedules: { label: "+ Add Schedule", open: openScheduleModal },
+    enginehours: { label: "+ Add Engine Hours", open: openEngineHoursModal }
   };
   const cfg = map[systemKey];
   if (cfg) {
@@ -910,6 +980,15 @@ function bindEvents() {
     if (event.target === scheduleModal) closeScheduleModal();
   });
   $("#schedProject").addEventListener("change", onScheduleProjectChange);
+
+  // Add Engine Hours modal
+  $("#engineHoursModalClose").addEventListener("click", closeEngineHoursModal);
+  $("#engineHoursCancel").addEventListener("click", closeEngineHoursModal);
+  engineHoursForm.addEventListener("submit", submitEngineHours);
+  engineHoursModal.addEventListener("click", (event) => {
+    if (event.target === engineHoursModal) closeEngineHoursModal();
+  });
+  $("#ehProject").addEventListener("change", onEngineHoursProjectChange);
 
   elements.menuButton.addEventListener("click", () =>
     elements.sidebar.classList.contains("open") ? closeSidebar() : openSidebar()
