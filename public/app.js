@@ -254,7 +254,6 @@ function recentRows(items) {
       <td>${escapeHtml(item.project_name)}</td>
       <td>${escapeHtml(item.genset_name)}</td>
       <td>${escapeHtml(item.service_item_name)}</td>
-      <td>${item.engine_hours == null ? "–" : formatNumber(item.engine_hours)}</td>
       <td>${escapeHtml(item.performed_by || "–")}</td>
       <td>${escapeHtml(item.work_order_number || "–")}</td>
       <td>${formatNumber(item.attachment_count)}</td>
@@ -555,7 +554,6 @@ async function submitRecord(event) {
   const payload = {
     service_schedule_id: scheduleId,
     service_date: serviceDate,
-    engine_hours: $("#recHours").value ? Number($("#recHours").value) : null,
     performed_by: $("#recPerformedBy").value.trim() || null,
     work_order_number: $("#recWorkOrder").value.trim() || null,
     remarks: $("#recRemarks").value.trim() || null

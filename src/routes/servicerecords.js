@@ -21,7 +21,6 @@ router.get("/", async (req, res, next) => {
         sr.id AS service_record_id,
         sr.service_schedule_id,
         sr.service_date,
-        sr.engine_hours,
         sr.performed_by,
         sr.work_order_number,
         sr.report_reference,
@@ -107,7 +106,6 @@ router.post("/", async (req, res, next) => {
     const {
       service_schedule_id,
       service_date,
-      engine_hours,
       performed_by,
       work_order_number,
       report_reference,
@@ -117,12 +115,6 @@ router.post("/", async (req, res, next) => {
     if (!service_schedule_id || !service_date) {
       return res.status(400).json({
         error: "service_schedule_id and service_date are required"
-      });
-    }
-
-    if (engine_hours != null && Number(engine_hours) < 0) {
-      return res.status(400).json({
-        error: "engine_hours cannot be negative"
       });
     }
 
@@ -138,15 +130,14 @@ router.post("/", async (req, res, next) => {
     const result = await pool.query(
       `
       INSERT INTO public.service_records
-        (service_schedule_id, service_date, engine_hours,
+        (service_schedule_id, service_date,
          performed_by, work_order_number, report_reference, remarks)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING *
       `,
       [
         service_schedule_id,
         service_date,
-        engine_hours ?? null,
         performed_by ?? null,
         work_order_number ?? null,
         report_reference ?? null,
@@ -174,7 +165,6 @@ router.put("/:id", async (req, res, next) => {
     const {
       service_schedule_id,
       service_date,
-      engine_hours,
       performed_by,
       work_order_number,
       report_reference,
@@ -201,19 +191,17 @@ router.put("/:id", async (req, res, next) => {
       SET
         service_schedule_id = $1,
         service_date = $2,
-        engine_hours = $3,
-        performed_by = $4,
-        work_order_number = $5,
-        report_reference = $6,
-        remarks = $7,
+        performed_by = $3,
+        work_order_number = $4,
+        report_reference = $5,
+        remarks = $6,
         updated_at = CURRENT_TIMESTAMP
-      WHERE id = $8
+      WHERE id = $7
       RETURNING *
       `,
       [
         service_schedule_id,
         service_date,
-        engine_hours ?? null,
         performed_by ?? null,
         work_order_number ?? null,
         report_reference ?? null,

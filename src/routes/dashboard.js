@@ -201,7 +201,6 @@ router.get("/recent", async (req, res, next) => {
         sr.id AS service_record_id,
         sr.service_schedule_id,
         sr.service_date,
-        sr.engine_hours,
         sr.performed_by,
         sr.work_order_number,
         sr.report_reference,
