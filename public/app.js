@@ -14,16 +14,34 @@ const ENDPOINTS = {
   serviceRecords: "/api/servicerecords",
   engineHours: "/api/enginehours"
 };
+
 const state = {
   dashboard: null,
   statuses: [],
   recent: [],
   currentView: "dashboard",
   currentSystem: "projects",
-  loading: false
+  loading: false,
+  // Raw (unfiltered) datasets for the systems views that support filtering.
+  systemsRaw: {
+    gensets: [],
+    schedules: [],
+    enginehours: []
+  },
+  // Full genset directory (id, project_id, project_name, name, equipment_tag),
+  // used to build the cascading Project -> Genset filter dropdowns.
+  gensetDirectory: [],
+  gensetDirectoryLoaded: false,
+  // Current filter selections for the Systems view.
+  systemsFilter: {
+    projectId: "",
+    gensetId: ""
+  }
 };
+
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+
 const elements = {
   alert: $("#globalAlert"),
   toast: $("#toast"),
@@ -39,14 +57,30 @@ const elements = {
   statusFilter: $("#statusFilter"),
   statusSearch: $("#statusSearch"),
   recentLimit: $("#recentLimit"),
-  systemSelect: $("#systemSelect")
+  systemSelect: $("#systemSelect"),
+  systemsFilterRow: $("#systemsFilterRow"),
+  systemsFilterProjectWrap: $("#systemsFilterProjectWrap"),
+  systemsFilterGensetWrap: $("#systemsFilterGensetWrap"),
+  systemsFilterProject: $("#systemsFilterProject"),
+  systemsFilterGenset: $("#systemsFilterGenset")
 };
+
 const viewMetadata = {
   dashboard: ["Dashboard", "Genset maintenance overview"],
   maintenance: ["Service Status", "Current maintenance condition for every active schedule"],
   recent: ["Recent Service", "Completed genset maintenance records"],
   systems: ["Systems", "Projects, gensets, service items and schedules"]
 };
+
+/* Which categories show which filter controls in the Systems view. */
+const SYSTEMS_FILTER_CONFIG = {
+  projects: { project: false, genset: false },
+  serviceitems: { project: false, genset: false },
+  gensets: { project: true, genset: false },
+  schedules: { project: true, genset: true },
+  enginehours: { project: true, genset: true }
+};
+
 /* ---------------- Helpers ---------------- */
 function escapeHtml(value) {
   return String(value ?? "")
@@ -56,6 +90,7 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
 }
+
 function formatDate(value) {
   if (!value) return "Not set";
   const dateOnly = String(value).slice(0, 10);
@@ -67,6 +102,7 @@ function formatDate(value) {
     day: "2-digit"
   }).format(new Date(year, month - 1, day));
 }
+
 function formatDateTime(value) {
   if (!value) return "–";
   const d = new Date(value);
@@ -79,15 +115,18 @@ function formatDateTime(value) {
     minute: "2-digit"
   }).format(d);
 }
+
 function formatNumber(value, fallback = 0) {
   const number = Number(value);
   return Number.isFinite(number) ? number.toLocaleString() : fallback;
 }
+
 function itemsOf(data) {
   if (Array.isArray(data)) return data;
   if (Array.isArray(data?.items)) return data.items;
   return [];
 }
+
 function statusLabel(status) {
   return (
     {
@@ -98,12 +137,14 @@ function statusLabel(status) {
     }[status] || status
   );
 }
+
 function statusBadge(status) {
   const safeStatus = ["OVERDUE", "DUE_SOON", "OK", "NOT_SET"].includes(status)
     ? status
     : "NOT_SET";
   return `<span class="status-badge ${safeStatus}">${escapeHtml(statusLabel(safeStatus))}</span>`;
 }
+
 async function apiFetch(url) {
   const response = await fetch(url, { headers: { Accept: "application/json" } });
   const contentType = response.headers.get("content-type") || "";
@@ -115,6 +156,7 @@ async function apiFetch(url) {
   }
   return payload;
 }
+
 /* Generic POST helper for the create forms. */
 async function apiPost(url, payload) {
   const response = await fetch(url, {
@@ -132,6 +174,7 @@ async function apiPost(url, payload) {
   }
   return result;
 }
+
 /* Populate a <select> with projects. Returns the loaded projects. */
 async function fillProjectSelect(selectId) {
   const projects = itemsOf(await apiFetch(ENDPOINTS.projects));
@@ -140,6 +183,7 @@ async function fillProjectSelect(selectId) {
     projects.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join("");
   return projects;
 }
+
 /* Fill a genset <select> with gensets in the given project. */
 async function fillGensetsForProject(projectId, selectId) {
   const select = $(selectId);
@@ -169,20 +213,24 @@ async function fillGensetsForProject(projectId, selectId) {
   select.disabled = false;
   return gensets;
 }
+
 /* ---------------- UI state ---------------- */
 function setConnection(isOnline) {
   elements.connectionDot.classList.toggle("online", isOnline);
   elements.connectionDot.classList.toggle("offline", !isOnline);
   elements.connectionText.textContent = isOnline ? "API connected" : "API unavailable";
 }
+
 function showAlert(message) {
   elements.alert.textContent = message;
   elements.alert.classList.remove("hidden");
 }
+
 function clearAlert() {
   elements.alert.classList.add("hidden");
   elements.alert.textContent = "";
 }
+
 let toastTimer;
 function showToast(message) {
   clearTimeout(toastTimer);
@@ -190,6 +238,7 @@ function showToast(message) {
   elements.toast.classList.remove("hidden");
   toastTimer = setTimeout(() => elements.toast.classList.add("hidden"), 3200);
 }
+
 function setView(view) {
   state.currentView = view;
   $$("[data-view-panel]").forEach((panel) =>
@@ -203,16 +252,19 @@ function setView(view) {
   elements.pageSubtitle.textContent = subtitle;
   closeSidebar();
 }
+
 function openSidebar() {
   elements.sidebar.classList.add("open");
   elements.sidebarBackdrop.classList.remove("hidden");
   elements.menuButton.setAttribute("aria-expanded", "true");
 }
+
 function closeSidebar() {
   elements.sidebar.classList.remove("open");
   elements.sidebarBackdrop.classList.add("hidden");
   elements.menuButton.setAttribute("aria-expanded", "false");
 }
+
 /* ---------------- Dashboard rendering ---------------- */
 function renderDashboard(summary) {
   const map = {
@@ -232,6 +284,7 @@ function renderDashboard(summary) {
     if (el) el.textContent = formatNumber(value);
   });
 }
+
 function renderNextDue() {
   const host = $("#nextDueList");
   const items = state.statuses
@@ -259,6 +312,7 @@ function renderNextDue() {
     )
     .join("");
 }
+
 function renderStatusTable() {
   const status = elements.statusFilter.value;
   const search = elements.statusSearch.value.trim().toLowerCase();
@@ -293,6 +347,7 @@ function renderStatusTable() {
   empty.classList.toggle("hidden", items.length > 0);
   $("#statusCount").textContent = `${items.length} schedule${items.length === 1 ? "" : "s"}`;
 }
+
 function recentRows(items) {
   return items
     .map(
@@ -310,6 +365,7 @@ function recentRows(items) {
     )
     .join("");
 }
+
 function renderRecent() {
   const fullBody = $("#recentTableBody");
   const dashboardBody = $("#dashboardRecentBody");
@@ -332,22 +388,24 @@ function renderRecent() {
   $("#recentEmpty").classList.toggle("hidden", state.recent.length > 0);
   $("#dashboardRecentEmpty").classList.toggle("hidden", state.recent.length > 0);
 }
+
 async function loadRecent() {
   const limit = Number(elements.recentLimit.value || 20);
   const data = await apiFetch(ENDPOINTS.recent(limit));
   state.recent = itemsOf(data);
   renderRecent();
 }
+
 async function loadEngineHoursCount() {
   try {
     const data = await apiFetch(ENDPOINTS.engineHours);
     const el = $("#engineHoursCount");
     if (el) el.textContent = formatNumber(data.count ?? itemsOf(data).length);
   } catch (error) {
-    // Non-fatal for the dashboard; leave the count as-is.
     console.warn("Engine hours count unavailable", error);
   }
 }
+
 async function loadAll({ notify = false } = {}) {
   if (state.loading) return;
   state.loading = true;
@@ -382,6 +440,155 @@ async function loadAll({ notify = false } = {}) {
     elements.refreshButton.textContent = "Refresh";
   }
 }
+
+/* ---------------------------------------------------------------
+ * Genset directory (cached) — used to build the Project -> Genset
+ * cascading filter dropdowns in the Systems view.
+ * ------------------------------------------------------------- */
+async function ensureGensetDirectory(force = false) {
+  if (state.gensetDirectoryLoaded && !force) return state.gensetDirectory;
+  state.gensetDirectory = itemsOf(await apiFetch(ENDPOINTS.gensets));
+  state.gensetDirectoryLoaded = true;
+  return state.gensetDirectory;
+}
+
+function directoryProjects() {
+  const seen = new Map();
+  state.gensetDirectory.forEach((g) => {
+    if (g.project_id != null && !seen.has(Number(g.project_id))) {
+      seen.set(Number(g.project_id), g.project_name ?? `Project ${g.project_id}`);
+    }
+  });
+  return [...seen.entries()]
+    .map(([id, name]) => ({ id, name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function directoryGensetsForProject(projectId) {
+  const list = projectId
+    ? state.gensetDirectory.filter((g) => Number(g.project_id) === Number(projectId))
+    : state.gensetDirectory.slice();
+  return list.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/* ---------------------------------------------------------------
+ * Systems view filter row: configure visibility + populate options
+ * for the currently selected category.
+ * ------------------------------------------------------------- */
+function populateFilterProjectOptions() {
+  const projects = directoryProjects();
+  elements.systemsFilterProject.innerHTML =
+    '<option value="">All projects</option>' +
+    projects.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join("");
+}
+
+function populateFilterGensetOptions(projectId) {
+  const gensets = directoryGensetsForProject(projectId);
+  elements.systemsFilterGenset.innerHTML =
+    '<option value="">All gensets</option>' +
+    gensets
+      .map(
+        (g) =>
+          `<option value="${g.id}">${escapeHtml(g.name)}${
+            g.equipment_tag ? " (" + escapeHtml(g.equipment_tag) + ")" : ""
+          }${!projectId ? " — " + escapeHtml(g.project_name ?? "") : ""}</option>`
+      )
+      .join("");
+}
+
+async function configureSystemsFilters(systemKey) {
+  const config = SYSTEMS_FILTER_CONFIG[systemKey] || { project: false, genset: false };
+
+  // reset filter selections whenever the category changes
+  state.systemsFilter = { projectId: "", gensetId: "" };
+
+  if (!config.project && !config.genset) {
+    elements.systemsFilterRow.classList.add("hidden");
+    return;
+  }
+
+  await ensureGensetDirectory();
+
+  elements.systemsFilterRow.classList.remove("hidden");
+  elements.systemsFilterProjectWrap.classList.toggle("hidden", !config.project);
+  elements.systemsFilterGensetWrap.classList.toggle("hidden", !config.genset);
+
+  if (config.project) {
+    populateFilterProjectOptions();
+    elements.systemsFilterProject.value = "";
+  }
+  if (config.genset) {
+    populateFilterGensetOptions("");
+    elements.systemsFilterGenset.value = "";
+  }
+}
+
+/* Re-render the currently visible systems table using the cached raw
+ * dataset and the current filter selections (no re-fetch needed). */
+function applySystemsFilters() {
+  const key = state.currentSystem;
+  const { projectId, gensetId } = state.systemsFilter;
+
+  if (key === "gensets") {
+    const rows = state.systemsRaw.gensets.filter((g) => {
+      if (gensetId && Number(g.id) !== Number(gensetId)) return false;
+      if (projectId && Number(g.project_id) !== Number(projectId)) return false;
+      return true;
+    });
+    renderGensetsTable(rows);
+    return;
+  }
+
+  if (key === "schedules") {
+    const rows = state.systemsRaw.schedules.filter((s) =>
+      rowMatchesGensetAndProject(s, projectId, gensetId)
+    );
+    renderSchedulesTable(rows);
+    return;
+  }
+
+  if (key === "enginehours") {
+    const rows = state.systemsRaw.enginehours.filter((r) =>
+      rowMatchesGensetAndProject(r, projectId, gensetId)
+    );
+    renderEngineHoursTable(rows);
+  }
+}
+
+/* Match a schedule/engine-hours row against the selected project/genset
+ * filters. Prefers explicit genset_id/project_id on the row; falls back
+ * to matching by genset name + equipment tag (scoped within the already
+ * project-filtered directory) when those ids are not present. */
+function rowMatchesGensetAndProject(row, projectId, gensetId) {
+  if (gensetId) {
+    if (row.genset_id != null) {
+      return Number(row.genset_id) === Number(gensetId);
+    }
+    const gensetEntry = state.gensetDirectory.find((g) => Number(g.id) === Number(gensetId));
+    if (gensetEntry) {
+      return (
+        row.genset_name === gensetEntry.name &&
+        (row.equipment_tag ?? null) === (gensetEntry.equipment_tag ?? null)
+      );
+    }
+    return true;
+  }
+
+  if (projectId) {
+    if (row.project_id != null) {
+      return Number(row.project_id) === Number(projectId);
+    }
+    if (row.genset_id != null) {
+      const gensetEntry = state.gensetDirectory.find((g) => Number(g.id) === Number(row.genset_id));
+      if (gensetEntry) return Number(gensetEntry.project_id) === Number(projectId);
+    }
+    const projectEntry = directoryProjects().find((p) => Number(p.id) === Number(projectId));
+    if (projectEntry) return row.project_name === projectEntry.name;
+  }
+
+  return true;
+}
+
 /* ---------------------------------------------------------------
  * Systems views (single dispatcher)
  * ------------------------------------------------------------- */
@@ -394,6 +601,7 @@ function renderSystemsTable(title, subtitle, headHtml, rows) {
   const empty = $("#systemsEmpty");
   if (empty) empty.classList.toggle("hidden", rows.trim().length > 0);
 }
+
 async function loadProjectsView() {
   const projects = itemsOf(await apiFetch(ENDPOINTS.projects));
   renderSystemsTable(
@@ -413,11 +621,11 @@ async function loadProjectsView() {
       .join("")
   );
 }
-async function loadGensetsView() {
-  const gensets = itemsOf(await apiFetch(ENDPOINTS.gensets));
+
+function renderGensetsTable(gensets) {
   renderSystemsTable(
     "Gensets",
-    "Generator set master data",
+    `Generator set master data (${gensets.length} shown)`,
     `<tr><th>ID</th><th>Name</th><th>Equipment Tag</th><th>Project</th><th>Active</th></tr>`,
     gensets
       .map(
@@ -433,30 +641,20 @@ async function loadGensetsView() {
       .join("")
   );
 }
-async function loadServiceItemsView() {
-  const items = itemsOf(await apiFetch(ENDPOINTS.serviceItems));
-  renderSystemsTable(
-    "Service Items",
-    "Maintenance task catalogue",
-    `<tr><th>ID</th><th>Name</th><th>Description</th><th>Active</th></tr>`,
-    items
-      .map(
-        (i) => `
-      <tr>
-        <td>${escapeHtml(i.id)}</td>
-        <td>${escapeHtml(i.name)}</td>
-        <td>${escapeHtml(i.description ?? "–")}</td>
-        <td>${i.active ? "Yes" : "No"}</td>
-      </tr>`
-      )
-      .join("")
-  );
+
+async function loadGensetsView() {
+  const gensets = itemsOf(await apiFetch(ENDPOINTS.gensets));
+  state.systemsRaw.gensets = gensets;
+  // keep the directory fresh too, since it powers the filter dropdowns
+  state.gensetDirectory = gensets;
+  state.gensetDirectoryLoaded = true;
+  applySystemsFilters();
 }
-async function loadSchedulesView() {
-  const schedules = itemsOf(await apiFetch(ENDPOINTS.activeSchedules));
+
+function renderSchedulesTable(schedules) {
   renderSystemsTable(
     "Active Schedules",
-    "Genset maintenance schedules",
+    `Genset maintenance schedules (${schedules.length} shown)`,
     `<tr><th>ID</th><th>Project</th><th>Genset</th><th>Service Item</th><th>Start Date</th><th>Interval (days)</th><th>Warning (days)</th><th>Active</th></tr>`,
     schedules
       .map(
@@ -477,11 +675,17 @@ async function loadSchedulesView() {
       .join("")
   );
 }
-async function loadEngineHoursView() {
-  const readings = itemsOf(await apiFetch(ENDPOINTS.engineHours));
+
+async function loadSchedulesView() {
+  const schedules = itemsOf(await apiFetch(ENDPOINTS.activeSchedules));
+  state.systemsRaw.schedules = schedules;
+  applySystemsFilters();
+}
+
+function renderEngineHoursTable(readings) {
   renderSystemsTable(
     "Engine Hours",
-    "Genset engine-hour readings",
+    `Genset engine-hour readings (${readings.length} shown)`,
     `<tr><th>ID</th><th>Project</th><th>Genset</th><th>Reading Date</th><th>Hours</th><th>Recorded</th></tr>`,
     readings
       .map(
@@ -500,6 +704,33 @@ async function loadEngineHoursView() {
       .join("")
   );
 }
+
+async function loadEngineHoursView() {
+  const readings = itemsOf(await apiFetch(ENDPOINTS.engineHours));
+  state.systemsRaw.enginehours = readings;
+  applySystemsFilters();
+}
+
+async function loadServiceItemsView() {
+  const items = itemsOf(await apiFetch(ENDPOINTS.serviceItems));
+  renderSystemsTable(
+    "Service Items",
+    "Maintenance task catalogue",
+    `<tr><th>ID</th><th>Name</th><th>Description</th><th>Active</th></tr>`,
+    items
+      .map(
+        (i) => `
+      <tr>
+        <td>${escapeHtml(i.id)}</td>
+        <td>${escapeHtml(i.name)}</td>
+        <td>${escapeHtml(i.description ?? "–")}</td>
+        <td>${i.active ? "Yes" : "No"}</td>
+      </tr>`
+      )
+      .join("")
+  );
+}
+
 const systemLoaders = {
   projects: loadProjectsView,
   gensets: loadGensetsView,
@@ -507,6 +738,7 @@ const systemLoaders = {
   schedules: loadSchedulesView,
   enginehours: loadEngineHoursView
 };
+
 async function showSystem(systemKey) {
   const loader = systemLoaders[systemKey];
   if (!loader) return;
@@ -516,16 +748,38 @@ async function showSystem(systemKey) {
   const addGensetButton = $("#addGensetButton");
   if (addGensetButton) addGensetButton.classList.toggle("hidden", systemKey !== "gensets");
   try {
+    await configureSystemsFilters(systemKey);
     await loader();
     setView("systems");
   } catch (error) {
     showAlert(`Unable to load ${systemKey}: ${error.message}`);
   }
 }
+
+/* ---------------- Systems filter events ---------------- */
+async function onSystemsFilterProjectChange() {
+  const projectId = elements.systemsFilterProject.value;
+  state.systemsFilter.projectId = projectId;
+  state.systemsFilter.gensetId = "";
+
+  const config = SYSTEMS_FILTER_CONFIG[state.currentSystem] || {};
+  if (config.genset) {
+    populateFilterGensetOptions(projectId);
+    elements.systemsFilterGenset.value = "";
+  }
+  applySystemsFilters();
+}
+
+function onSystemsFilterGensetChange() {
+  state.systemsFilter.gensetId = elements.systemsFilterGenset.value;
+  applySystemsFilters();
+}
+
 /* ---------------- Add Service Record (cascading) ---------------- */
 const recordModal = $("#recordModal");
 const recordForm = $("#recordForm");
 const recordCache = { gensets: [], schedules: [] };
+
 async function openRecordModal() {
   recordForm.reset();
   $("#recDate").value = new Date().toISOString().slice(0, 10);
@@ -542,9 +796,11 @@ async function openRecordModal() {
     showAlert(`Unable to open the record form: ${error.message}`);
   }
 }
+
 function closeRecordModal() {
   recordModal.classList.add("hidden");
 }
+
 async function onProjectChange() {
   const projectId = Number($("#recProject").value);
   const scheduleSelect = $("#recSchedule");
@@ -556,6 +812,7 @@ async function onProjectChange() {
     showAlert(`Unable to load gensets: ${error.message}`);
   }
 }
+
 async function onGensetChange() {
   const gensetId = Number($("#recGenset").value);
   const scheduleSelect = $("#recSchedule");
@@ -591,6 +848,7 @@ async function onGensetChange() {
     showAlert(`Unable to load schedules: ${error.message}`);
   }
 }
+
 async function submitRecord(event) {
   event.preventDefault();
   const saveButton = $("#recordSave");
@@ -625,9 +883,11 @@ async function submitRecord(event) {
     saveButton.textContent = "Save record";
   }
 }
+
 /* ---------------- Add Genset ---------------- */
 const gensetModal = $("#gensetModal");
 const gensetForm = $("#gensetForm");
+
 async function openGensetModal() {
   gensetForm.reset();
   try {
@@ -637,9 +897,11 @@ async function openGensetModal() {
     showAlert(`Unable to open the genset form: ${error.message}`);
   }
 }
+
 function closeGensetModal() {
   gensetModal.classList.add("hidden");
 }
+
 async function submitGenset(event) {
   event.preventDefault();
   const saveButton = $("#gensetSave");
@@ -659,6 +921,7 @@ async function submitGenset(event) {
     await apiPost(ENDPOINTS.gensets, payload);
     closeGensetModal();
     showToast("Genset added");
+    await ensureGensetDirectory(true);
     await loadGensetsView();
     await loadAll({ notify: false });
   } catch (error) {
@@ -668,17 +931,21 @@ async function submitGenset(event) {
     saveButton.textContent = "Save genset";
   }
 }
+
 /* ---------------- Add Project ---------------- */
 const projectModal = $("#projectModal");
 const projectForm = $("#projectForm");
+
 function openProjectModal() {
   projectForm.reset();
   projectModal.classList.remove("hidden");
   $("#projCode").focus();
 }
+
 function closeProjectModal() {
   projectModal.classList.add("hidden");
 }
+
 async function submitProject(event) {
   event.preventDefault();
   const saveButton = $("#projectSave");
@@ -705,17 +972,21 @@ async function submitProject(event) {
     saveButton.textContent = "Save project";
   }
 }
+
 /* ---------------- Add Service Item ---------------- */
 const serviceItemModal = $("#serviceItemModal");
 const serviceItemForm = $("#serviceItemForm");
+
 function openServiceItemModal() {
   serviceItemForm.reset();
   serviceItemModal.classList.remove("hidden");
   $("#svcItemName").focus();
 }
+
 function closeServiceItemModal() {
   serviceItemModal.classList.add("hidden");
 }
+
 async function submitServiceItem(event) {
   event.preventDefault();
   const saveButton = $("#serviceItemSave");
@@ -742,10 +1013,12 @@ async function submitServiceItem(event) {
     saveButton.textContent = "Save service item";
   }
 }
+
 /* ---------------- Add Schedule (cascading) ---------------- */
 const scheduleModal = $("#scheduleModal");
 const scheduleForm = $("#scheduleForm");
 const scheduleCache = { gensets: [] };
+
 async function openScheduleModal() {
   scheduleForm.reset();
   $("#schedWarning").value = 30;
@@ -772,9 +1045,11 @@ async function openScheduleModal() {
     showAlert(`Unable to open the schedule form: ${error.message}`);
   }
 }
+
 function closeScheduleModal() {
   scheduleModal.classList.add("hidden");
 }
+
 async function onScheduleProjectChange() {
   const projectId = Number($("#schedProject").value);
   try {
@@ -783,6 +1058,7 @@ async function onScheduleProjectChange() {
     showAlert(`Unable to load gensets: ${error.message}`);
   }
 }
+
 async function submitSchedule(event) {
   event.preventDefault();
   const saveButton = $("#scheduleSave");
@@ -833,9 +1109,11 @@ async function submitSchedule(event) {
     saveButton.textContent = "Save schedule";
   }
 }
+
 /* ---------------- Add Engine Hours (cascading) ---------------- */
 const engineHoursModal = $("#engineHoursModal");
 const engineHoursForm = $("#engineHoursForm");
+
 async function openEngineHoursModal() {
   engineHoursForm.reset();
   $("#ehReadingDate").value = new Date().toISOString().slice(0, 10);
@@ -849,9 +1127,11 @@ async function openEngineHoursModal() {
     showAlert(`Unable to open the engine hours form: ${error.message}`);
   }
 }
+
 function closeEngineHoursModal() {
   engineHoursModal.classList.add("hidden");
 }
+
 async function onEngineHoursProjectChange() {
   const projectId = Number($("#ehProject").value);
   try {
@@ -860,6 +1140,7 @@ async function onEngineHoursProjectChange() {
     showAlert(`Unable to load gensets: ${error.message}`);
   }
 }
+
 async function submitEngineHours(event) {
   event.preventDefault();
   const saveButton = $("#engineHoursSave");
@@ -895,6 +1176,7 @@ async function submitEngineHours(event) {
     saveButton.textContent = "Save reading";
   }
 }
+
 /* ---------------- Add button dispatcher ---------------- */
 // Gensets uses its own separate button (#addGensetButton), toggled in showSystem.
 function updateAddButton(systemKey) {
@@ -916,6 +1198,7 @@ function updateAddButton(systemKey) {
     btn.onclick = null;
   }
 }
+
 /* ---------------- Events ---------------- */
 function bindEvents() {
   $$(".nav-item").forEach((item) =>
@@ -956,6 +1239,11 @@ function bindEvents() {
     }
   });
   elements.refreshButton.addEventListener("click", () => loadAll({ notify: true }));
+
+  // Systems filter row (Project / Genset cascading filters)
+  elements.systemsFilterProject.addEventListener("change", onSystemsFilterProjectChange);
+  elements.systemsFilterGenset.addEventListener("change", onSystemsFilterGensetChange);
+
   // Add Service Record modal
   $("#addRecordButton").addEventListener("click", openRecordModal);
   $("#recordModalClose").addEventListener("click", closeRecordModal);
@@ -966,6 +1254,7 @@ function bindEvents() {
   });
   $("#recProject").addEventListener("change", onProjectChange);
   $("#recGenset").addEventListener("change", onGensetChange);
+
   // Add Project modal
   $("#projectModalClose").addEventListener("click", closeProjectModal);
   $("#projectCancel").addEventListener("click", closeProjectModal);
@@ -973,6 +1262,7 @@ function bindEvents() {
   projectModal.addEventListener("click", (event) => {
     if (event.target === projectModal) closeProjectModal();
   });
+
   // Add Genset modal
   $("#addGensetButton").addEventListener("click", openGensetModal);
   $("#gensetModalClose").addEventListener("click", closeGensetModal);
@@ -981,6 +1271,7 @@ function bindEvents() {
   gensetModal.addEventListener("click", (event) => {
     if (event.target === gensetModal) closeGensetModal();
   });
+
   // Add Service Item modal
   $("#serviceItemModalClose").addEventListener("click", closeServiceItemModal);
   $("#serviceItemCancel").addEventListener("click", closeServiceItemModal);
@@ -988,6 +1279,7 @@ function bindEvents() {
   serviceItemModal.addEventListener("click", (event) => {
     if (event.target === serviceItemModal) closeServiceItemModal();
   });
+
   // Add Schedule modal
   $("#scheduleModalClose").addEventListener("click", closeScheduleModal);
   $("#scheduleCancel").addEventListener("click", closeScheduleModal);
@@ -996,6 +1288,7 @@ function bindEvents() {
     if (event.target === scheduleModal) closeScheduleModal();
   });
   $("#schedProject").addEventListener("change", onScheduleProjectChange);
+
   // Add Engine Hours modal
   $("#engineHoursModalClose").addEventListener("click", closeEngineHoursModal);
   $("#engineHoursCancel").addEventListener("click", closeEngineHoursModal);
@@ -1004,16 +1297,19 @@ function bindEvents() {
     if (event.target === engineHoursModal) closeEngineHoursModal();
   });
   $("#ehProject").addEventListener("change", onEngineHoursProjectChange);
+
   elements.menuButton.addEventListener("click", () =>
     elements.sidebar.classList.contains("open") ? closeSidebar() : openSidebar()
   );
   elements.sidebarBackdrop.addEventListener("click", closeSidebar);
+
   window.addEventListener("online", () => loadAll({ notify: true }));
   window.addEventListener("offline", () => {
     setConnection(false);
     showAlert("The browser is offline. Previously loaded information remains visible.");
   });
 }
+
 async function registerServiceWorker() {
   if ("serviceWorker" in navigator) {
     try {
@@ -1023,6 +1319,7 @@ async function registerServiceWorker() {
     }
   }
 }
+
 document.addEventListener("DOMContentLoaded", () => {
   bindEvents();
   registerServiceWorker();

@@ -174,6 +174,7 @@
               </div>
             </section>
           </section>
+
           <section class="view hidden" id="maintenanceView" data-view-panel="maintenance">
             <section class="panel">
               <div class="panel-header stack-mobile">
@@ -227,6 +228,7 @@
               </div>
             </section>
           </section>
+
           <section class="view hidden" id="recentView" data-view-panel="recent">
             <section class="panel">
               <div class="panel-header stack-mobile">
@@ -270,6 +272,7 @@
               </div>
             </section>
           </section>
+
           <section class="view hidden" id="systemsView" data-view-panel="systems">
             <section class="panel">
               <div class="panel-header stack-mobile">
@@ -296,6 +299,23 @@
                   </label>
                 </div>
               </div>
+
+              <!-- Cascading Project / Genset filters. Shown/hidden per category. -->
+              <div class="filter-row hidden" id="systemsFilterRow">
+                <label class="compact-field hidden" id="systemsFilterProjectWrap">
+                  <span>Filter by project</span>
+                  <select id="systemsFilterProject">
+                    <option value="">All projects</option>
+                  </select>
+                </label>
+                <label class="compact-field hidden" id="systemsFilterGensetWrap">
+                  <span>Filter by genset</span>
+                  <select id="systemsFilterGenset">
+                    <option value="">All gensets</option>
+                  </select>
+                </label>
+              </div>
+
               <div class="table-wrap">
                 <table>
                   <thead id="systemsHead"></thead>
