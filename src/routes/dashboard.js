@@ -3,12 +3,10 @@ const pool = require("../db");
 const router = express.Router();
 
 /*
- * The status view was rebuilt as public.v_service_status on the new
- * service_schedule_id link. Its status column is "service_status" and it
- * emits OVERDUE, DUE_SOON, OK, NO_BASELINE_DATE, NO_PERIOD, INACTIVE.
- *
- * This helper maps every non-actionable value to NOT_SET and exposes it
- * as "status" so the frontend keeps working unchanged.
+ * Reads from public.v_service_status (status column = service_status,
+ * emitting OVERDUE, DUE_SOON, OK, NO_BASELINE_DATE, NO_PERIOD, INACTIVE).
+ * Non-actionable values are mapped to NOT_SET and exposed as "status".
+ * The schedule interval column is now interval_days (was period_days).
  */
 const STATUS_SELECT = `
   schedule_id,
@@ -20,8 +18,11 @@ const STATUS_SELECT = `
   service_item_id,
   service_item_name,
   schedule_start_date,
-  period_days,
+  interval_days,
+  interval_running_hours,
   warning_days,
+  track_days,
+  track_running_hours,
   last_service_date,
   next_due_date,
   days_remaining,
@@ -34,7 +35,6 @@ const STATUS_SELECT = `
 
 /*
  * GET /api/dashboard
- * Returns the main dashboard counters.
  */
 router.get("/", async (_req, res, next) => {
   try {
@@ -68,11 +68,7 @@ router.get("/", async (_req, res, next) => {
 });
 
 /*
- * GET /api/dashboard/upcoming
  * GET /api/dashboard/upcoming?days=30
- *
- * Service schedules due between today and the requested number of days.
- * Valid range: 1 to 365 days.
  */
 router.get("/upcoming", async (req, res, next) => {
   try {
@@ -80,16 +76,11 @@ router.get("/upcoming", async (req, res, next) => {
     const days = Number.isInteger(requestedDays)
       ? Math.min(Math.max(requestedDays, 1), 365)
       : 30;
-
     const sql = `
       SELECT ${STATUS_SELECT}
       FROM public.v_service_status
       WHERE next_due_date BETWEEN CURRENT_DATE AND CURRENT_DATE + $1::int
-      ORDER BY
-        next_due_date,
-        project_name,
-        genset_name,
-        service_item_name
+      ORDER BY next_due_date, project_name, genset_name, service_item_name
     `;
     const result = await pool.query(sql, [days]);
     res.json({ days, count: result.rowCount, items: result.rows });
@@ -100,7 +91,6 @@ router.get("/upcoming", async (req, res, next) => {
 
 /*
  * GET /api/dashboard/overdue
- * All overdue service schedules.
  */
 router.get("/overdue", async (_req, res, next) => {
   try {
@@ -110,11 +100,7 @@ router.get("/overdue", async (_req, res, next) => {
         ABS(days_remaining) AS days_overdue
       FROM public.v_service_status
       WHERE service_status = 'OVERDUE'
-      ORDER BY
-        next_due_date,
-        project_name,
-        genset_name,
-        service_item_name
+      ORDER BY next_due_date, project_name, genset_name, service_item_name
     `;
     const result = await pool.query(sql);
     res.json({ count: result.rowCount, items: result.rows });
@@ -125,7 +111,6 @@ router.get("/overdue", async (_req, res, next) => {
 
 /*
  * GET /api/dashboard/due-soon
- * Schedules currently within their warning period.
  */
 router.get("/due-soon", async (_req, res, next) => {
   try {
@@ -133,11 +118,7 @@ router.get("/due-soon", async (_req, res, next) => {
       SELECT ${STATUS_SELECT}
       FROM public.v_service_status
       WHERE service_status = 'DUE_SOON'
-      ORDER BY
-        next_due_date,
-        project_name,
-        genset_name,
-        service_item_name
+      ORDER BY next_due_date, project_name, genset_name, service_item_name
     `;
     const result = await pool.query(sql);
     res.json({ count: result.rowCount, items: result.rows });
@@ -148,7 +129,6 @@ router.get("/due-soon", async (_req, res, next) => {
 
 /*
  * GET /api/dashboard/status-summary
- * One row per status for charts or cards.
  */
 router.get("/status-summary", async (_req, res, next) => {
   try {
@@ -164,12 +144,10 @@ router.get("/status-summary", async (_req, res, next) => {
       GROUP BY 1
     `;
     const result = await pool.query(sql);
-
     const summary = { OVERDUE: 0, DUE_SOON: 0, OK: 0, NOT_SET: 0 };
     for (const row of result.rows) {
       summary[row.status] = row.count;
     }
-
     res.json({
       total: summary.OVERDUE + summary.DUE_SOON + summary.OK + summary.NOT_SET,
       statuses: summary
@@ -180,14 +158,7 @@ router.get("/status-summary", async (_req, res, next) => {
 });
 
 /*
- * GET /api/dashboard/recent
  * GET /api/dashboard/recent?limit=20
- *
- * Most recently completed service records. Genset, project and service
- * item are derived through the linked service schedule (the record no
- * longer stores genset_id or service_item_id directly).
- *
- * Valid range: 1 to 100 records.
  */
 router.get("/recent", async (req, res, next) => {
   try {
@@ -195,7 +166,6 @@ router.get("/recent", async (req, res, next) => {
     const limit = Number.isInteger(requestedLimit)
       ? Math.min(Math.max(requestedLimit, 1), 100)
       : 20;
-
     const sql = `
       SELECT
         sr.id AS service_record_id,
@@ -222,9 +192,7 @@ router.get("/recent", async (req, res, next) => {
       JOIN public.gensets g            ON g.id = ss.genset_id
       JOIN public.projects p           ON p.id = g.project_id
       JOIN public.service_items si     ON si.id = ss.service_item_id
-      ORDER BY
-        sr.service_date DESC,
-        sr.id DESC
+      ORDER BY sr.service_date DESC, sr.id DESC
       LIMIT $1::int
     `;
     const result = await pool.query(sql, [limit]);

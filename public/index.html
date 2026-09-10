@@ -115,10 +115,6 @@
                     <span>Active Schedules</span>
                     <strong id="activeSchedules">0</strong>
                   </button>
-                  <button class="overview-link" data-system-view="enginehours" type="button">
-                    <span>Engine Hours</span>
-                    <strong id="engineHoursCount">0</strong>
-                  </button>
                   <div class="overview-static">
                     <span>Service Records</span>
                     <strong id="serviceRecords">0</strong>
@@ -174,6 +170,7 @@
               </div>
             </section>
           </section>
+
           <section class="view hidden" id="maintenanceView" data-view-panel="maintenance">
             <section class="panel">
               <div class="panel-header stack-mobile">
@@ -213,7 +210,7 @@
                       <th>Last Service</th>
                       <th>Next Due</th>
                       <th>Days</th>
-                      <th>Period</th>
+                      <th>Interval</th>
                     </tr>
                   </thead>
                   <tbody id="statusTableBody"></tbody>
@@ -227,6 +224,7 @@
               </div>
             </section>
           </section>
+
           <section class="view hidden" id="recentView" data-view-panel="recent">
             <section class="panel">
               <div class="panel-header stack-mobile">
@@ -270,6 +268,7 @@
               </div>
             </section>
           </section>
+
           <section class="view hidden" id="systemsView" data-view-panel="systems">
             <section class="panel">
               <div class="panel-header stack-mobile">
@@ -277,21 +276,17 @@
                   <h2 id="systemTitle">Projects</h2>
                   <p id="systemSubtitle">System master data</p>
                 </div>
-                <div class="panel-header-actions">
-                  <button class="button primary hidden" id="addSystemButton" type="button">
-                    + Add
-                  </button>
+                <div class="filter-row">
                   <button class="button hidden" id="addGensetButton" type="button">
                     + Add Genset
                   </button>
-                  <label class="compact-field">
+                  <label>
                     <span>Category</span>
                     <select id="systemSelect">
                       <option value="projects">Projects</option>
                       <option value="gensets">Gensets</option>
                       <option value="serviceitems">Service Items</option>
                       <option value="schedules">Active Schedules</option>
-                      <option value="enginehours">Engine Hours</option>
                     </select>
                   </label>
                 </div>
@@ -310,7 +305,9 @@
         </main>
       </div>
     </div>
+
     <div class="sidebar-backdrop hidden" id="sidebarBackdrop"></div>
+
     <!-- Add Service Record modal -->
     <div
       class="modal-backdrop hidden"
@@ -372,35 +369,7 @@
         </form>
       </div>
     </div>
-    <!-- Add Project modal -->
-    <div class="modal-backdrop hidden" id="projectModal" role="dialog"
-         aria-modal="true" aria-labelledby="projectModalTitle">
-      <div class="modal">
-        <div class="modal-header">
-          <h2 id="projectModalTitle">Add Project</h2>
-          <button class="modal-close" id="projectModalClose" type="button"
-                  aria-label="Close">&times;</button>
-        </div>
-        <form id="projectForm">
-          <div class="modal-body">
-            <div class="form-grid">
-              <div class="field">
-                <label for="projCode">Code <em>*</em></label>
-                <input id="projCode" type="text" required placeholder="e.g. SRW" />
-              </div>
-              <div class="field">
-                <label for="projName">Name <em>*</em></label>
-                <input id="projName" type="text" required placeholder="e.g. Sunrise Wind" />
-              </div>
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button class="button ghost" type="button" id="projectCancel">Cancel</button>
-            <button class="button primary" type="submit" id="projectSave">Save project</button>
-          </div>
-        </form>
-      </div>
-    </div>
+
     <!-- Add Genset modal -->
     <div
       class="modal-backdrop hidden"
@@ -446,145 +415,7 @@
         </form>
       </div>
     </div>
-    <!-- Add Service Item modal -->
-    <div
-      class="modal-backdrop hidden"
-      id="serviceItemModal"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="serviceItemModalTitle"
-    >
-      <div class="modal">
-        <div class="modal-header">
-          <h2 id="serviceItemModalTitle">Add Service Item</h2>
-          <button class="modal-close" id="serviceItemModalClose" type="button" aria-label="Close">
-            &times;
-          </button>
-        </div>
-        <form id="serviceItemForm">
-          <div class="modal-body">
-            <div class="form-grid">
-              <div class="field full">
-                <label for="svcItemName">Name <em>*</em></label>
-                <input id="svcItemName" type="text" required placeholder="e.g. Engine Oil Change" />
-              </div>
-              <div class="field full">
-                <label for="svcItemDescription">Description</label>
-                <textarea id="svcItemDescription" placeholder="Optional details"></textarea>
-              </div>
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button class="button secondary" type="button" id="serviceItemCancel">Cancel</button>
-            <button class="button" type="submit" id="serviceItemSave">Save service item</button>
-          </div>
-        </form>
-      </div>
-    </div>
-    <!-- Add Schedule modal -->
-    <div
-      class="modal-backdrop hidden"
-      id="scheduleModal"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="scheduleModalTitle"
-    >
-      <div class="modal">
-        <div class="modal-header">
-          <h2 id="scheduleModalTitle">Add Schedule</h2>
-          <button class="modal-close" id="scheduleModalClose" type="button" aria-label="Close">
-            &times;
-          </button>
-        </div>
-        <form id="scheduleForm">
-          <div class="modal-body">
-            <div class="form-grid">
-              <div class="field">
-                <label for="schedProject">Project <em>*</em></label>
-                <select id="schedProject" required>
-                  <option value="">Select project</option>
-                </select>
-              </div>
-              <div class="field">
-                <label for="schedGenset">Genset <em>*</em></label>
-                <select id="schedGenset" required disabled>
-                  <option value="">Select project first</option>
-                </select>
-              </div>
-              <div class="field full">
-                <label for="schedServiceItem">Service Item <em>*</em></label>
-                <select id="schedServiceItem" required>
-                  <option value="">Select service item</option>
-                </select>
-              </div>
-              <div class="field">
-                <label for="schedPeriod">Period (days) <em>*</em></label>
-                <input id="schedPeriod" type="number" min="1" step="1" required placeholder="e.g. 365" />
-              </div>
-              <div class="field">
-                <label for="schedWarning">Warning (days)</label>
-                <input id="schedWarning" type="number" min="0" step="1" value="30" />
-              </div>
-              <div class="field full">
-                <label for="schedStartDate">Start Date <em>*</em></label>
-                <input id="schedStartDate" type="date" required />
-              </div>
-              <div class="field full">
-                <label for="schedNotes">Notes</label>
-                <textarea id="schedNotes" placeholder="Optional notes"></textarea>
-              </div>
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button class="button secondary" type="button" id="scheduleCancel">Cancel</button>
-            <button class="button" type="submit" id="scheduleSave">Save schedule</button>
-          </div>
-        </form>
-      </div>
-    </div>
-    <!-- Add Engine Hours modal -->
-    <div
-      class="modal-backdrop hidden"
-      id="engineHoursModal"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="engineHoursModalTitle"
-    >
-      <div class="modal">
-        <div class="modal-header">
-          <h2 id="engineHoursModalTitle">Add Engine Hours</h2>
-          <button class="modal-close" id="engineHoursModalClose" type="button" aria-label="Close">
-            &times;
-          </button>
-        </div>
-        <form id="engineHoursForm">
-          <div class="modal-body">
-            <div class="form-grid">
-              <div class="field">
-                <label for="ehProject">Project <em>*</em></label>
-                <select id="ehProject" required>
-                  <option value="">Select project</option>
-                </select>
-              </div>
-              <div class="field">
-                <label for="ehGenset">Genset <em>*</em></label>
-                <select id="ehGenset" required disabled>
-                  <option value="">Select project first</option>
-                </select>
-              </div>
-              <div class="field full">
-                <label for="ehHours">Engine Hours <em>*</em></label>
-                <input id="ehHours" type="number" min="0" step="0.1" required placeholder="e.g. 1250.5" />
-              </div>
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button class="button secondary" type="button" id="engineHoursCancel">Cancel</button>
-            <button class="button" type="submit" id="engineHoursSave">Save reading</button>
-          </div>
-        </form>
-      </div>
-    </div>
+
     <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
   </body>
 </html>

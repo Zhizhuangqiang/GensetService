@@ -115,7 +115,6 @@ async function apiFetch(url) {
   }
   return payload;
 }
-/* Generic POST helper for the create forms. */
 async function apiPost(url, payload) {
   const response = await fetch(url, {
     method: "POST",
@@ -132,7 +131,6 @@ async function apiPost(url, payload) {
   }
   return result;
 }
-/* Populate a <select> with projects. Returns the loaded projects. */
 async function fillProjectSelect(selectId) {
   const projects = itemsOf(await apiFetch(ENDPOINTS.projects));
   $(selectId).innerHTML =
@@ -140,7 +138,6 @@ async function fillProjectSelect(selectId) {
     projects.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join("");
   return projects;
 }
-/* Fill a genset <select> with gensets in the given project. */
 async function fillGensetsForProject(projectId, selectId) {
   const select = $(selectId);
   if (!projectId) {
@@ -285,7 +282,11 @@ function renderStatusTable() {
       <td>${formatDate(item.last_service_date)}</td>
       <td>${formatDate(item.next_due_date)}</td>
       <td>${item.days_remaining == null ? "–" : formatNumber(item.days_remaining)}</td>
-      <td>${formatNumber(item.period_days)} days</td>
+      <td>${formatNumber(item.interval_days)} days${
+        item.track_running_hours && item.interval_running_hours
+          ? `<br><small>${formatNumber(item.interval_running_hours)} hrs</small>`
+          : ""
+      }</td>
     </tr>
   `
     )
@@ -344,7 +345,6 @@ async function loadEngineHoursCount() {
     const el = $("#engineHoursCount");
     if (el) el.textContent = formatNumber(data.count ?? itemsOf(data).length);
   } catch (error) {
-    // Non-fatal for the dashboard; leave the count as-is.
     console.warn("Engine hours count unavailable", error);
   }
 }
@@ -452,12 +452,15 @@ async function loadServiceItemsView() {
       .join("")
   );
 }
+function trackFlag(on) {
+  return on ? "Yes" : "–";
+}
 async function loadSchedulesView() {
   const schedules = itemsOf(await apiFetch(ENDPOINTS.activeSchedules));
   renderSystemsTable(
     "Active Schedules",
     "Genset maintenance schedules",
-    `<tr><th>ID</th><th>Project</th><th>Genset</th><th>Service Item</th><th>Start Date</th><th>Period (days)</th><th>Warning (days)</th><th>Active</th></tr>`,
+    `<tr><th>ID</th><th>Project</th><th>Genset</th><th>Service Item</th><th>Start Date</th><th>Interval (days)</th><th>Interval (hours)</th><th>Warning (days)</th><th>Track Days</th><th>Track Hours</th><th>Active</th></tr>`,
     schedules
       .map(
         (s) => `
@@ -469,8 +472,11 @@ async function loadSchedulesView() {
         }</td>
         <td>${escapeHtml(s.service_item_name ?? "–")}</td>
         <td>${formatDate(s.schedule_start_date)}</td>
-        <td>${formatNumber(s.period_days)}</td>
-        <td>${formatNumber(s.warning_days)}</td>
+        <td>${s.interval_days == null ? "–" : formatNumber(s.interval_days)}</td>
+        <td>${s.interval_running_hours == null ? "–" : formatNumber(s.interval_running_hours)}</td>
+        <td>${s.warning_days == null ? "–" : formatNumber(s.warning_days)}</td>
+        <td>${trackFlag(s.track_days)}</td>
+        <td>${trackFlag(s.track_running_hours)}</td>
         <td>${s.active ? "Yes" : "No"}</td>
       </tr>`
       )
@@ -579,7 +585,7 @@ async function onGensetChange() {
         .map(
           (s) =>
             `<option value="${s.id}">${escapeHtml(s.service_item_name ?? "Service")}${
-              s.period_days ? " — every " + s.period_days + " days" : ""
+              s.interval_days ? " — every " + s.interval_days + " days" : ""
             }</option>`
         )
         .join("");
@@ -746,6 +752,8 @@ const scheduleCache = { gensets: [] };
 async function openScheduleModal() {
   scheduleForm.reset();
   $("#schedWarning").value = 30;
+  $("#schedTrackDays").checked = true;
+  $("#schedTrackHours").checked = false;
   $("#schedStartDate").value = new Date().toISOString().slice(0, 10);
   const gensetSelect = $("#schedGenset");
   gensetSelect.innerHTML = '<option value="">Select project first</option>';
@@ -779,11 +787,15 @@ async function onScheduleProjectChange() {
 async function submitSchedule(event) {
   event.preventDefault();
   const saveButton = $("#scheduleSave");
+  const intervalHoursRaw = $("#schedIntervalHours").value;
   const payload = {
     genset_id: Number($("#schedGenset").value),
     service_item_id: Number($("#schedServiceItem").value),
-    period_days: Number($("#schedPeriod").value),
+    interval_days: Number($("#schedIntervalDays").value),
+    interval_running_hours: intervalHoursRaw === "" ? null : Number(intervalHoursRaw),
     warning_days: $("#schedWarning").value === "" ? 30 : Number($("#schedWarning").value),
+    track_days: $("#schedTrackDays").checked,
+    track_running_hours: $("#schedTrackHours").checked,
     schedule_start_date: $("#schedStartDate").value,
     notes: $("#schedNotes").value.trim() || null
   };
@@ -791,12 +803,16 @@ async function submitSchedule(event) {
     showAlert("Project, genset and service item are required.");
     return;
   }
-  if (!payload.period_days || payload.period_days <= 0) {
-    showAlert("Period (days) must be a positive number.");
+  if (!payload.interval_days || payload.interval_days <= 0) {
+    showAlert("Interval (days) must be a positive number.");
     return;
   }
-  if (payload.warning_days > payload.period_days) {
-    showAlert("Warning days cannot exceed the period.");
+  if (payload.interval_running_hours != null && payload.interval_running_hours <= 0) {
+    showAlert("Interval (running hours) must be a positive number when provided.");
+    return;
+  }
+  if (payload.warning_days > payload.interval_days) {
+    showAlert("Warning days cannot exceed the interval (days).");
     return;
   }
   if (!payload.schedule_start_date) {
@@ -875,7 +891,6 @@ async function submitEngineHours(event) {
   }
 }
 /* ---------------- Add button dispatcher ---------------- */
-// Gensets uses its own separate button (#addGensetButton), toggled in showSystem.
 function updateAddButton(systemKey) {
   const btn = $("#addSystemButton");
   if (!btn) return;

@@ -6,13 +6,11 @@ const router = express.Router();
  * GET /api/servicestatus
  * Optional: ?status=OVERDUE | DUE_SOON | OK | NOT_SET
  *
- * Reads from the v_service_status view (rebuilt on service_schedule_id).
- *
- * The view emits these service_status values:
- *   OVERDUE, DUE_SOON, OK, NO_BASELINE_DATE, NO_PERIOD, INACTIVE
- *
- * For frontend compatibility, NO_BASELINE_DATE, NO_PERIOD and INACTIVE
- * are all mapped to NOT_SET and exposed as "status".
+ * Reads from public.v_service_status. The view's status column is
+ * service_status (OVERDUE, DUE_SOON, OK, NO_BASELINE_DATE, NO_PERIOD,
+ * INACTIVE). Non-actionable values are mapped to NOT_SET and exposed
+ * as "status" so the frontend keeps working unchanged.
+ * Interval column is interval_days (was period_days).
  */
 router.get("/", async (req, res, next) => {
   try {
@@ -21,16 +19,11 @@ router.get("/", async (req, res, next) => {
 
     const values = [];
     let having = "";
-
     if (requested) {
       if (!allowed.includes(requested)) {
-        return res.status(400).json({
-          error: "Invalid status",
-          allowedValues: allowed
-        });
+        return res.status(400).json({ error: "Invalid status", allowedValues: allowed });
       }
       values.push(requested);
-      // Filter on the mapped status, not the raw view value.
       having = "WHERE mapped.status = $1";
     }
 
@@ -48,8 +41,11 @@ router.get("/", async (req, res, next) => {
           service_item_id,
           service_item_name,
           schedule_start_date,
-          period_days,
+          interval_days,
+          interval_running_hours,
           warning_days,
+          track_days,
+          track_running_hours,
           last_service_date,
           next_due_date,
           days_remaining,
@@ -57,8 +53,7 @@ router.get("/", async (req, res, next) => {
             WHEN service_status IN ('OVERDUE', 'DUE_SOON', 'OK')
               THEN service_status
             ELSE 'NOT_SET'
-          END AS status,
-          service_status AS raw_status
+          END AS status
         FROM public.v_service_status
       ) AS mapped
       ${having}
@@ -86,7 +81,6 @@ router.get("/", async (req, res, next) => {
 
 /*
  * GET /api/servicestatus/summary
- * Status counts for dashboard KPI cards.
  */
 router.get("/summary", async (_req, res, next) => {
   try {
