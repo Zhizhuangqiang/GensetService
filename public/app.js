@@ -115,6 +115,7 @@ async function apiFetch(url) {
   }
   return payload;
 }
+/* Generic POST helper for the create forms. */
 async function apiPost(url, payload) {
   const response = await fetch(url, {
     method: "POST",
@@ -131,6 +132,7 @@ async function apiPost(url, payload) {
   }
   return result;
 }
+/* Populate a <select> with projects. Returns the loaded projects. */
 async function fillProjectSelect(selectId) {
   const projects = itemsOf(await apiFetch(ENDPOINTS.projects));
   $(selectId).innerHTML =
@@ -138,6 +140,7 @@ async function fillProjectSelect(selectId) {
     projects.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join("");
   return projects;
 }
+/* Fill a genset <select> with gensets in the given project. */
 async function fillGensetsForProject(projectId, selectId) {
   const select = $(selectId);
   if (!projectId) {
@@ -282,11 +285,7 @@ function renderStatusTable() {
       <td>${formatDate(item.last_service_date)}</td>
       <td>${formatDate(item.next_due_date)}</td>
       <td>${item.days_remaining == null ? "–" : formatNumber(item.days_remaining)}</td>
-      <td>${formatNumber(item.interval_days)} days${
-        item.track_running_hours && item.interval_running_hours
-          ? `<br><small>${formatNumber(item.interval_running_hours)} hrs</small>`
-          : ""
-      }</td>
+      <td>${formatNumber(item.interval_days ?? item.period_days)} days</td>
     </tr>
   `
     )
@@ -345,6 +344,7 @@ async function loadEngineHoursCount() {
     const el = $("#engineHoursCount");
     if (el) el.textContent = formatNumber(data.count ?? itemsOf(data).length);
   } catch (error) {
+    // Non-fatal for the dashboard; leave the count as-is.
     console.warn("Engine hours count unavailable", error);
   }
 }
@@ -452,15 +452,12 @@ async function loadServiceItemsView() {
       .join("")
   );
 }
-function trackFlag(on) {
-  return on ? "Yes" : "–";
-}
 async function loadSchedulesView() {
   const schedules = itemsOf(await apiFetch(ENDPOINTS.activeSchedules));
   renderSystemsTable(
     "Active Schedules",
     "Genset maintenance schedules",
-    `<tr><th>ID</th><th>Project</th><th>Genset</th><th>Service Item</th><th>Start Date</th><th>Interval (days)</th><th>Interval (hours)</th><th>Warning (days)</th><th>Track Days</th><th>Track Hours</th><th>Active</th></tr>`,
+    `<tr><th>ID</th><th>Project</th><th>Genset</th><th>Service Item</th><th>Start Date</th><th>Interval (days)</th><th>Warning (days)</th><th>Active</th></tr>`,
     schedules
       .map(
         (s) => `
@@ -472,11 +469,8 @@ async function loadSchedulesView() {
         }</td>
         <td>${escapeHtml(s.service_item_name ?? "–")}</td>
         <td>${formatDate(s.schedule_start_date)}</td>
-        <td>${s.interval_days == null ? "–" : formatNumber(s.interval_days)}</td>
-        <td>${s.interval_running_hours == null ? "–" : formatNumber(s.interval_running_hours)}</td>
-        <td>${s.warning_days == null ? "–" : formatNumber(s.warning_days)}</td>
-        <td>${trackFlag(s.track_days)}</td>
-        <td>${trackFlag(s.track_running_hours)}</td>
+        <td>${formatNumber(s.interval_days ?? s.period_days)}</td>
+        <td>${formatNumber(s.warning_days)}</td>
         <td>${s.active ? "Yes" : "No"}</td>
       </tr>`
       )
@@ -488,7 +482,7 @@ async function loadEngineHoursView() {
   renderSystemsTable(
     "Engine Hours",
     "Genset engine-hour readings",
-    `<tr><th>ID</th><th>Project</th><th>Genset</th><th>Hours</th><th>Recorded</th></tr>`,
+    `<tr><th>ID</th><th>Project</th><th>Genset</th><th>Reading Date</th><th>Hours</th><th>Recorded</th></tr>`,
     readings
       .map(
         (r) => `
@@ -498,6 +492,7 @@ async function loadEngineHoursView() {
         <td><strong>${escapeHtml(r.genset_name ?? "–")}</strong>${
           r.equipment_tag ? `<br><small>${escapeHtml(r.equipment_tag)}</small>` : ""
         }</td>
+        <td>${formatDate(r.reading_date)}</td>
         <td>${formatNumber(r.hours)}</td>
         <td>${formatDateTime(r.created_at)}</td>
       </tr>`
@@ -585,7 +580,9 @@ async function onGensetChange() {
         .map(
           (s) =>
             `<option value="${s.id}">${escapeHtml(s.service_item_name ?? "Service")}${
-              s.interval_days ? " — every " + s.interval_days + " days" : ""
+              (s.interval_days ?? s.period_days)
+                ? " — every " + (s.interval_days ?? s.period_days) + " days"
+                : ""
             }</option>`
         )
         .join("");
@@ -752,8 +749,10 @@ const scheduleCache = { gensets: [] };
 async function openScheduleModal() {
   scheduleForm.reset();
   $("#schedWarning").value = 30;
-  $("#schedTrackDays").checked = true;
-  $("#schedTrackHours").checked = false;
+  const trackDays = $("#schedTrackDays");
+  const trackHours = $("#schedTrackHours");
+  if (trackDays) trackDays.checked = true;
+  if (trackHours) trackHours.checked = false;
   $("#schedStartDate").value = new Date().toISOString().slice(0, 10);
   const gensetSelect = $("#schedGenset");
   gensetSelect.innerHTML = '<option value="">Select project first</option>';
@@ -787,15 +786,15 @@ async function onScheduleProjectChange() {
 async function submitSchedule(event) {
   event.preventDefault();
   const saveButton = $("#scheduleSave");
-  const intervalHoursRaw = $("#schedIntervalHours").value;
+  const intervalHoursRaw = $("#schedIntervalHours") ? $("#schedIntervalHours").value : "";
   const payload = {
     genset_id: Number($("#schedGenset").value),
     service_item_id: Number($("#schedServiceItem").value),
     interval_days: Number($("#schedIntervalDays").value),
     interval_running_hours: intervalHoursRaw === "" ? null : Number(intervalHoursRaw),
     warning_days: $("#schedWarning").value === "" ? 30 : Number($("#schedWarning").value),
-    track_days: $("#schedTrackDays").checked,
-    track_running_hours: $("#schedTrackHours").checked,
+    track_days: $("#schedTrackDays") ? $("#schedTrackDays").checked : true,
+    track_running_hours: $("#schedTrackHours") ? $("#schedTrackHours").checked : false,
     schedule_start_date: $("#schedStartDate").value,
     notes: $("#schedNotes").value.trim() || null
   };
@@ -839,6 +838,7 @@ const engineHoursModal = $("#engineHoursModal");
 const engineHoursForm = $("#engineHoursForm");
 async function openEngineHoursModal() {
   engineHoursForm.reset();
+  $("#ehReadingDate").value = new Date().toISOString().slice(0, 10);
   const gensetSelect = $("#ehGenset");
   gensetSelect.innerHTML = '<option value="">Select project first</option>';
   gensetSelect.disabled = true;
@@ -865,10 +865,15 @@ async function submitEngineHours(event) {
   const saveButton = $("#engineHoursSave");
   const payload = {
     genset_id: Number($("#ehGenset").value),
+    reading_date: $("#ehReadingDate").value,
     hours: $("#ehHours").value === "" ? null : Number($("#ehHours").value)
   };
   if (!payload.genset_id) {
     showAlert("Project and genset are required.");
+    return;
+  }
+  if (!payload.reading_date) {
+    showAlert("Reading date is required.");
     return;
   }
   if (payload.hours == null || !Number.isFinite(payload.hours) || payload.hours < 0) {
@@ -891,6 +896,7 @@ async function submitEngineHours(event) {
   }
 }
 /* ---------------- Add button dispatcher ---------------- */
+// Gensets uses its own separate button (#addGensetButton), toggled in showSystem.
 function updateAddButton(systemKey) {
   const btn = $("#addSystemButton");
   if (!btn) return;
@@ -950,7 +956,6 @@ function bindEvents() {
     }
   });
   elements.refreshButton.addEventListener("click", () => loadAll({ notify: true }));
-
   // Add Service Record modal
   $("#addRecordButton").addEventListener("click", openRecordModal);
   $("#recordModalClose").addEventListener("click", closeRecordModal);
@@ -961,7 +966,6 @@ function bindEvents() {
   });
   $("#recProject").addEventListener("change", onProjectChange);
   $("#recGenset").addEventListener("change", onGensetChange);
-
   // Add Project modal
   $("#projectModalClose").addEventListener("click", closeProjectModal);
   $("#projectCancel").addEventListener("click", closeProjectModal);
@@ -969,7 +973,6 @@ function bindEvents() {
   projectModal.addEventListener("click", (event) => {
     if (event.target === projectModal) closeProjectModal();
   });
-
   // Add Genset modal
   $("#addGensetButton").addEventListener("click", openGensetModal);
   $("#gensetModalClose").addEventListener("click", closeGensetModal);
@@ -978,7 +981,6 @@ function bindEvents() {
   gensetModal.addEventListener("click", (event) => {
     if (event.target === gensetModal) closeGensetModal();
   });
-
   // Add Service Item modal
   $("#serviceItemModalClose").addEventListener("click", closeServiceItemModal);
   $("#serviceItemCancel").addEventListener("click", closeServiceItemModal);
@@ -986,7 +988,6 @@ function bindEvents() {
   serviceItemModal.addEventListener("click", (event) => {
     if (event.target === serviceItemModal) closeServiceItemModal();
   });
-
   // Add Schedule modal
   $("#scheduleModalClose").addEventListener("click", closeScheduleModal);
   $("#scheduleCancel").addEventListener("click", closeScheduleModal);
@@ -995,7 +996,6 @@ function bindEvents() {
     if (event.target === scheduleModal) closeScheduleModal();
   });
   $("#schedProject").addEventListener("change", onScheduleProjectChange);
-
   // Add Engine Hours modal
   $("#engineHoursModalClose").addEventListener("click", closeEngineHoursModal);
   $("#engineHoursCancel").addEventListener("click", closeEngineHoursModal);
@@ -1004,7 +1004,6 @@ function bindEvents() {
     if (event.target === engineHoursModal) closeEngineHoursModal();
   });
   $("#ehProject").addEventListener("change", onEngineHoursProjectChange);
-
   elements.menuButton.addEventListener("click", () =>
     elements.sidebar.classList.contains("open") ? closeSidebar() : openSidebar()
   );

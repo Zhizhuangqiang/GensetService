@@ -5,13 +5,12 @@ const router = express.Router();
 /*
  * GET /api/enginehours
  * Optional: ?genset_id=1
- * Returns engine-hour readings, newest first.
+ * Returns engine-hour readings, newest reading first.
  */
 router.get("/", async (req, res, next) => {
   try {
     const values = [];
     let where = "";
-
     if (req.query.genset_id) {
       const gensetId = Number.parseInt(req.query.genset_id, 10);
       if (!Number.isInteger(gensetId) || gensetId <= 0) {
@@ -20,13 +19,13 @@ router.get("/", async (req, res, next) => {
       values.push(gensetId);
       where = "WHERE eh.genset_id = $1";
     }
-
     const result = await pool.query(
       `
       SELECT
         eh.id,
         eh.genset_id,
         eh.hours,
+        eh.reading_date,
         eh.created_at,
         g.name AS genset_name,
         g.equipment_tag,
@@ -35,11 +34,10 @@ router.get("/", async (req, res, next) => {
       JOIN public.gensets g  ON g.id = eh.genset_id
       JOIN public.projects p ON p.id = g.project_id
       ${where}
-      ORDER BY eh.created_at DESC, eh.id DESC
+      ORDER BY eh.reading_date DESC, eh.id DESC
       `,
       values
     );
-
     res.json({ count: result.rowCount, items: result.rows });
   } catch (error) {
     next(error);
@@ -55,13 +53,13 @@ router.get("/:id", async (req, res, next) => {
     if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({ error: "Invalid engine hours id" });
     }
-
     const result = await pool.query(
       `
       SELECT
         eh.id,
         eh.genset_id,
         eh.hours,
+        eh.reading_date,
         eh.created_at,
         g.name AS genset_name,
         g.equipment_tag,
@@ -73,11 +71,9 @@ router.get("/:id", async (req, res, next) => {
       `,
       [id]
     );
-
     if (result.rowCount === 0) {
       return res.status(404).json({ error: "Engine hours reading not found" });
     }
-
     res.json(result.rows[0]);
   } catch (error) {
     next(error);
@@ -86,12 +82,13 @@ router.get("/:id", async (req, res, next) => {
 
 /*
  * POST /api/enginehours
- * Body: { genset_id, hours }
+ * Body: { genset_id, hours, reading_date }
  */
 router.post("/", async (req, res, next) => {
   try {
     const genset_id = Number.parseInt(req.body.genset_id, 10);
     const hours = Number(req.body.hours);
+    const reading_date = req.body.reading_date;
 
     if (!Number.isInteger(genset_id) || genset_id <= 0) {
       return res.status(400).json({ error: "genset_id is required" });
@@ -99,16 +96,18 @@ router.post("/", async (req, res, next) => {
     if (!Number.isFinite(hours) || hours < 0) {
       return res.status(400).json({ error: "hours must be zero or greater" });
     }
+    if (!reading_date) {
+      return res.status(400).json({ error: "reading_date is required" });
+    }
 
     const result = await pool.query(
       `
-      INSERT INTO public.engine_hours (genset_id, hours)
-      VALUES ($1, $2)
+      INSERT INTO public.engine_hours (genset_id, hours, reading_date)
+      VALUES ($1, $2, $3)
       RETURNING *
       `,
-      [genset_id, hours]
+      [genset_id, hours, reading_date]
     );
-
     res.status(201).json(result.rows[0]);
   } catch (error) {
     if (error && error.code === "23503") {
@@ -120,7 +119,7 @@ router.post("/", async (req, res, next) => {
 
 /*
  * PUT /api/enginehours/:id
- * Body: { genset_id, hours }
+ * Body: { genset_id, hours, reading_date }
  */
 router.put("/:id", async (req, res, next) => {
   try {
@@ -128,9 +127,9 @@ router.put("/:id", async (req, res, next) => {
     if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({ error: "Invalid engine hours id" });
     }
-
     const genset_id = Number.parseInt(req.body.genset_id, 10);
     const hours = Number(req.body.hours);
+    const reading_date = req.body.reading_date;
 
     if (!Number.isInteger(genset_id) || genset_id <= 0) {
       return res.status(400).json({ error: "genset_id is required" });
@@ -138,21 +137,22 @@ router.put("/:id", async (req, res, next) => {
     if (!Number.isFinite(hours) || hours < 0) {
       return res.status(400).json({ error: "hours must be zero or greater" });
     }
+    if (!reading_date) {
+      return res.status(400).json({ error: "reading_date is required" });
+    }
 
     const result = await pool.query(
       `
       UPDATE public.engine_hours
-      SET genset_id = $1, hours = $2
-      WHERE id = $3
+      SET genset_id = $1, hours = $2, reading_date = $3
+      WHERE id = $4
       RETURNING *
       `,
-      [genset_id, hours, id]
+      [genset_id, hours, reading_date, id]
     );
-
     if (result.rowCount === 0) {
       return res.status(404).json({ error: "Engine hours reading not found" });
     }
-
     res.json(result.rows[0]);
   } catch (error) {
     if (error && error.code === "23503") {
@@ -172,16 +172,13 @@ router.delete("/:id", async (req, res, next) => {
     if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({ error: "Invalid engine hours id" });
     }
-
     const result = await pool.query(
       "DELETE FROM public.engine_hours WHERE id = $1 RETURNING id",
       [id]
     );
-
     if (result.rowCount === 0) {
       return res.status(404).json({ error: "Engine hours reading not found" });
     }
-
     res.json({ success: true, id: result.rows[0].id });
   } catch (error) {
     next(error);
