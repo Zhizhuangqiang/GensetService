@@ -29,6 +29,7 @@ router.get("/", async (req, res, next) => {
         eh.created_at,
         g.name AS genset_name,
         g.equipment_tag,
+		p.id AS project_id,
         p.name AS project_name
       FROM public.engine_hours eh
       JOIN public.gensets g  ON g.id = eh.genset_id
@@ -63,6 +64,7 @@ router.get("/:id", async (req, res, next) => {
         eh.created_at,
         g.name AS genset_name,
         g.equipment_tag,
+		p.id AS project_id,
         p.name AS project_name
       FROM public.engine_hours eh
       JOIN public.gensets g  ON g.id = eh.genset_id

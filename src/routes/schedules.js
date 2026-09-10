@@ -73,6 +73,7 @@ router.get("/", async (req, res, next) => {
         ss.active,
         g.name AS genset_name,
         g.equipment_tag,
+		p.id AS project_id,
         p.name AS project_name,
         si.name AS service_item_name
       FROM public.service_schedules ss
@@ -104,6 +105,7 @@ router.get("/:id", async (req, res, next) => {
       SELECT
         ss.*,
         g.name AS genset_name,
+		p.id AS project_id,
         p.name AS project_name,
         si.name AS service_item_name
       FROM public.service_schedules ss
