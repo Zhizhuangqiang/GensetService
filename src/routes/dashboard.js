@@ -3,18 +3,20 @@ const pool = require("../db");
 const router = express.Router();
 
 /*
- * Reads from public.v_service_status (status column = service_status,
- * emitting OVERDUE, DUE_SOON, OK, NO_BASELINE_DATE, NO_PERIOD, INACTIVE).
- * Non-actionable values are mapped to NOT_SET and exposed as "status".
- * The schedule interval column is now interval_days (was period_days).
+ * Reads from public.v_service_status (rebuilt on package_id/packages).
+ * Its status column is "service_status", emitting OVERDUE, DUE_SOON, OK,
+ * NO_BASELINE_DATE, NO_PERIOD, INACTIVE. Non-actionable values are mapped
+ * to NOT_SET and exposed as "status" for frontend compatibility.
  */
 const STATUS_SELECT = `
   schedule_id,
   project_id,
   project_name,
-  genset_id,
-  genset_name,
-  equipment_tag,
+  package_id,
+  package_name,
+  package_tag,
+  package_type_id,
+  package_type_name,
   service_item_id,
   service_item_name,
   schedule_start_date,
@@ -50,7 +52,7 @@ router.get("/", async (_req, res, next) => {
       )
       SELECT
         (SELECT COUNT(*)::int FROM public.projects WHERE active = TRUE)          AS "activeProjects",
-        (SELECT COUNT(*)::int FROM public.gensets WHERE active = TRUE)           AS "activeGensets",
+        (SELECT COUNT(*)::int FROM public.packages WHERE active = TRUE)          AS "activePackages",
         (SELECT COUNT(*)::int FROM public.service_items WHERE active = TRUE)     AS "activeServiceItems",
         (SELECT COUNT(*)::int FROM public.service_schedules WHERE active = TRUE) AS "activeSchedules",
         (SELECT COUNT(*)::int FROM public.service_records)                       AS "serviceRecords",
@@ -80,7 +82,7 @@ router.get("/upcoming", async (req, res, next) => {
       SELECT ${STATUS_SELECT}
       FROM public.v_service_status
       WHERE next_due_date BETWEEN CURRENT_DATE AND CURRENT_DATE + $1::int
-      ORDER BY next_due_date, project_name, genset_name, service_item_name
+      ORDER BY next_due_date, project_name, package_name, service_item_name
     `;
     const result = await pool.query(sql, [days]);
     res.json({ days, count: result.rowCount, items: result.rows });
@@ -100,7 +102,7 @@ router.get("/overdue", async (_req, res, next) => {
         ABS(days_remaining) AS days_overdue
       FROM public.v_service_status
       WHERE service_status = 'OVERDUE'
-      ORDER BY next_due_date, project_name, genset_name, service_item_name
+      ORDER BY next_due_date, project_name, package_name, service_item_name
     `;
     const result = await pool.query(sql);
     res.json({ count: result.rowCount, items: result.rows });
@@ -118,7 +120,7 @@ router.get("/due-soon", async (_req, res, next) => {
       SELECT ${STATUS_SELECT}
       FROM public.v_service_status
       WHERE service_status = 'DUE_SOON'
-      ORDER BY next_due_date, project_name, genset_name, service_item_name
+      ORDER BY next_due_date, project_name, package_name, service_item_name
     `;
     const result = await pool.query(sql);
     res.json({ count: result.rowCount, items: result.rows });
@@ -159,6 +161,9 @@ router.get("/status-summary", async (_req, res, next) => {
 
 /*
  * GET /api/dashboard/recent?limit=20
+ *
+ * Most recently completed service records. Project, package and service
+ * item are derived through the linked service schedule.
  */
 router.get("/recent", async (req, res, next) => {
   try {
@@ -177,9 +182,10 @@ router.get("/recent", async (req, res, next) => {
         sr.remarks,
         p.id AS project_id,
         p.name AS project_name,
-        g.id AS genset_id,
-        g.name AS genset_name,
-        g.equipment_tag,
+        pkg.id AS package_id,
+        pkg.name AS package_name,
+        pkg.package_tag,
+        pt.name AS package_type_name,
         si.id AS service_item_id,
         si.name AS service_item_name,
         (
@@ -189,8 +195,9 @@ router.get("/recent", async (req, res, next) => {
         ) AS attachment_count
       FROM public.service_records sr
       JOIN public.service_schedules ss ON ss.id = sr.service_schedule_id
-      JOIN public.gensets g            ON g.id = ss.genset_id
-      JOIN public.projects p           ON p.id = g.project_id
+      JOIN public.packages pkg         ON pkg.id = ss.package_id
+      JOIN public.package_types pt     ON pt.id = pkg.package_type_id
+      JOIN public.projects p           ON p.id = pkg.project_id
       JOIN public.service_items si     ON si.id = ss.service_item_id
       ORDER BY sr.service_date DESC, sr.id DESC
       LIMIT $1::int

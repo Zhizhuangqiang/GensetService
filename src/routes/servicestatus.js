@@ -6,11 +6,11 @@ const router = express.Router();
  * GET /api/servicestatus
  * Optional: ?status=OVERDUE | DUE_SOON | OK | NOT_SET
  *
- * Reads from public.v_service_status. The view's status column is
- * service_status (OVERDUE, DUE_SOON, OK, NO_BASELINE_DATE, NO_PERIOD,
- * INACTIVE). Non-actionable values are mapped to NOT_SET and exposed
- * as "status" so the frontend keeps working unchanged.
- * Interval column is interval_days (was period_days).
+ * Reads from public.v_service_status (rebuilt on package_id/packages).
+ * The view's status column is service_status (OVERDUE, DUE_SOON, OK,
+ * NO_BASELINE_DATE, NO_PERIOD, INACTIVE). Non-actionable values are
+ * mapped to NOT_SET and exposed as "status" so the frontend keeps
+ * working unchanged.
  */
 router.get("/", async (req, res, next) => {
   try {
@@ -35,9 +35,11 @@ router.get("/", async (req, res, next) => {
           schedule_id,
           project_id,
           project_name,
-          genset_id,
-          genset_name,
-          equipment_tag,
+          package_id,
+          package_name,
+          package_tag,
+          package_type_id,
+          package_type_name,
           service_item_id,
           service_item_name,
           schedule_start_date,
@@ -67,7 +69,7 @@ router.get("/", async (req, res, next) => {
         END,
         mapped.next_due_date NULLS LAST,
         mapped.project_name,
-        mapped.genset_name,
+        mapped.package_name,
         mapped.service_item_name
       `,
       values

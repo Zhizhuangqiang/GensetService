@@ -1,15 +1,20 @@
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
+const path = require("path");
 const pool = require("./db");
-const dashboardRouter = require("./routes/dashboard");
-const projectsRouter = require("./routes/projects");
-const gensetsRouter = require("./routes/gensets");
-const servicestatusRouter = require("./routes/servicestatus");
-const serviceItemsRouter = require("./routes/serviceitems");
-const schedulesRouter    = require("./routes/schedules");
-const serviceRecordsRouter = require("./routes/servicerecords");
-const engineHoursRouter = require("./routes/enginehours");
+
+const dashboardRouter        = require("./routes/dashboard");
+const projectsRouter         = require("./routes/projects");
+const packagesRouter         = require("./routes/packages");
+const packageTypesRouter     = require("./routes/packagetypes");
+const servicestatusRouter    = require("./routes/servicestatus");
+const serviceItemsRouter     = require("./routes/serviceitems");
+const schedulesRouter        = require("./routes/schedules");
+const serviceRecordsRouter   = require("./routes/servicerecords");
+const pvDataTypesRouter      = require("./routes/pvdatatypes");
+const pvAttributesRouter     = require("./routes/pvattributes");
+const pvLogRouter            = require("./routes/pvlog");
 
 const app = express();
 app.disable("x-powered-by");
@@ -20,8 +25,6 @@ const allowlist = (process.env.CORS_ORIGINS || "")
   .split(",")
   .map((value) => value.trim())
   .filter(Boolean);
-
-const path = require("path");
 
 app.use(
   express.static(
@@ -55,29 +58,17 @@ app.get("/api/health", async (_req, res, next) => {
   }
 });
 
-app.use(
-	"/api/dashboard",
-	dashboardRouter
-);
-app.use(
-  "/api/projects",
-  projectsRouter
-);
-
-app.use(
-  "/api/gensets",
-  gensetsRouter
-);
-
-app.use(
-  "/api/servicestatus",
-  servicestatusRouter
-);
-
-app.use("/api/serviceitems", serviceItemsRouter);
-app.use("/api/schedules",     schedulesRouter);
+app.use("/api/dashboard",      dashboardRouter);
+app.use("/api/projects",       projectsRouter);
+app.use("/api/packages",       packagesRouter);
+app.use("/api/packagetypes",   packageTypesRouter);
+app.use("/api/servicestatus",  servicestatusRouter);
+app.use("/api/serviceitems",   serviceItemsRouter);
+app.use("/api/schedules",      schedulesRouter);
 app.use("/api/servicerecords", serviceRecordsRouter);
-app.use("/api/enginehours", engineHoursRouter);
+app.use("/api/pvdatatypes",    pvDataTypesRouter);
+app.use("/api/pvattributes",   pvAttributesRouter);
+app.use("/api/pvlog",          pvLogRouter);
 
 app.use((_req, res) => res.status(404).json({ error: "Route not found" }));
 
