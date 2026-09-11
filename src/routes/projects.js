@@ -41,22 +41,13 @@ router.get("/", async (req, res, next) => {
 
     const result = await pool.query(
       `
-      SELECT
-        p.id,
-        p.code,
-        p.name,
-        p.active,
-        p.created_at,
-        p.updated_at,
-        COUNT(g.id)::int AS genset_count
-      FROM public.projects p
-      LEFT JOIN public.gensets g ON g.project_id = p.id
-      ${where}
-      GROUP BY
-        p.id, p.code, p.name, p.active, p.created_at, p.updated_at
-      ORDER BY
-        p.active DESC,
-        p.name ASC
+    SELECT
+		p.id, p.code, p.name, p.active, p.created_at, p.updated_at,
+		COUNT(pkg.id)::int AS package_count
+	FROM public.projects p
+	LEFT JOIN public.packages pkg ON pkg.project_id = p.id
+	GROUP BY p.id, p.code, p.name, p.active, p.created_at, p.updated_at
+	ORDER BY p.active DESC, p.name ASC
       `,
       values
     );
