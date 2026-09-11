@@ -6,9 +6,9 @@
     <meta name="theme-color" content="#0f766e" />
     <meta
       name="description"
-      content="Genset maintenance schedules, due dates, and service history."
+      content="Package maintenance schedules, due dates, and service history."
     />
-    <title>Genset Service Manager</title>
+    <title>Package Service Manager</title>
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="stylesheet" href="/styles.css" />
     <script src="/app.js" defer></script>
@@ -18,9 +18,9 @@
     <div class="app-shell">
       <aside class="sidebar" id="sidebar" aria-label="Primary navigation">
         <div class="brand">
-          <div class="brand-mark" aria-hidden="true">GS</div>
+          <div class="brand-mark" aria-hidden="true">PS</div>
           <div>
-            <strong>Genset Service</strong>
+            <strong>Package Service</strong>
             <span>Maintenance Manager</span>
           </div>
         </div>
@@ -56,7 +56,7 @@
           </button>
           <div>
             <h1 id="pageTitle">Dashboard</h1>
-            <p id="pageSubtitle">Genset maintenance overview</p>
+            <p id="pageSubtitle">Package maintenance overview</p>
           </div>
           <div class="topbar-actions">
             <span class="last-updated" id="lastUpdated">Not updated</span>
@@ -103,9 +103,9 @@
                     <span>Projects</span>
                     <strong id="activeProjects">0</strong>
                   </button>
-                  <button class="overview-link" data-system-view="gensets" type="button">
-                    <span>Gensets</span>
-                    <strong id="activeGensets">0</strong>
+                  <button class="overview-link" data-system-view="packages" type="button">
+                    <span>Packages</span>
+                    <strong id="activePackages">0</strong>
                   </button>
                   <button class="overview-link" data-system-view="serviceitems" type="button">
                     <span>Service Items</span>
@@ -115,9 +115,9 @@
                     <span>Active Schedules</span>
                     <strong id="activeSchedules">0</strong>
                   </button>
-                  <button class="overview-link" data-system-view="enginehours" type="button">
-                    <span>Engine Hours</span>
-                    <strong id="engineHoursCount">0</strong>
+                  <button class="overview-link" data-system-view="readings" type="button">
+                    <span>Readings</span>
+                    <strong id="readingsCount">0</strong>
                   </button>
                   <div class="overview-static">
                     <span>Service Records</span>
@@ -160,7 +160,7 @@
                     <tr>
                       <th>Date</th>
                       <th>Project</th>
-                      <th>Genset</th>
+                      <th>Package</th>
                       <th>Service Item</th>
                       <th>Performed By</th>
                       <th>Work Order</th>
@@ -198,7 +198,7 @@
                     <input
                       id="statusSearch"
                       type="search"
-                      placeholder="Project, genset or service item"
+                      placeholder="Project, package or service item"
                     />
                   </label>
                 </div>
@@ -209,7 +209,7 @@
                     <tr>
                       <th>Status</th>
                       <th>Project</th>
-                      <th>Genset</th>
+                      <th>Package</th>
                       <th>Service Item</th>
                       <th>Last Service</th>
                       <th>Next Due</th>
@@ -257,7 +257,7 @@
                     <tr>
                       <th>Date</th>
                       <th>Project</th>
-                      <th>Genset</th>
+                      <th>Package</th>
                       <th>Service Item</th>
                       <th>Performed By</th>
                       <th>Work Order</th>
@@ -284,38 +284,23 @@
                   <button class="button primary hidden" id="addSystemButton" type="button">
                     + Add
                   </button>
-                  <button class="button hidden" id="addGensetButton" type="button">
-                    + Add Genset
+                  <button class="button hidden" id="addPackageButton" type="button">
+                    + Add Package
                   </button>
                   <label class="compact-field">
                     <span>Category</span>
                     <select id="systemSelect">
                       <option value="projects">Projects</option>
-                      <option value="gensets">Gensets</option>
+                      <option value="packages">Packages</option>
+                      <option value="packagetypes">Package Types</option>
                       <option value="serviceitems">Service Items</option>
                       <option value="schedules">Active Schedules</option>
-                      <option value="enginehours">Engine Hours</option>
+                      <option value="pvattributes">Process Values</option>
+                      <option value="readings">Readings</option>
                     </select>
                   </label>
                 </div>
               </div>
-
-              <!-- Cascading Project / Genset filters. Shown/hidden per category. -->
-              <div class="filter-row hidden" id="systemsFilterRow">
-                <label class="compact-field hidden" id="systemsFilterProjectWrap">
-                  <span>Filter by project</span>
-                  <select id="systemsFilterProject">
-                    <option value="">All projects</option>
-                  </select>
-                </label>
-                <label class="compact-field hidden" id="systemsFilterGensetWrap">
-                  <span>Filter by genset</span>
-                  <select id="systemsFilterGenset">
-                    <option value="">All gensets</option>
-                  </select>
-                </label>
-              </div>
-
               <div class="table-wrap">
                 <table>
                   <thead id="systemsHead"></thead>
@@ -331,6 +316,7 @@
       </div>
     </div>
     <div class="sidebar-backdrop hidden" id="sidebarBackdrop"></div>
+
     <!-- Add Service Record modal -->
     <div
       class="modal-backdrop hidden"
@@ -356,15 +342,15 @@
                 </select>
               </div>
               <div class="field">
-                <label for="recGenset">Genset</label>
-                <select id="recGenset" required disabled>
+                <label for="recPackage">Package</label>
+                <select id="recPackage" required disabled>
                   <option value="">Select project first</option>
                 </select>
               </div>
               <div class="field full">
                 <label for="recSchedule">Service Schedule</label>
                 <select id="recSchedule" required disabled>
-                  <option value="">Select genset first</option>
+                  <option value="">Select package first</option>
                 </select>
               </div>
               <div class="field">
@@ -392,6 +378,7 @@
         </form>
       </div>
     </div>
+
     <!-- Add Project modal -->
     <div class="modal-backdrop hidden" id="projectModal" role="dialog"
          aria-modal="true" aria-labelledby="projectModalTitle">
@@ -421,51 +408,94 @@
         </form>
       </div>
     </div>
-    <!-- Add Genset modal -->
+
+    <!-- Add Package modal -->
     <div
       class="modal-backdrop hidden"
-      id="gensetModal"
+      id="packageModal"
       role="dialog"
       aria-modal="true"
-      aria-labelledby="gensetModalTitle"
+      aria-labelledby="packageModalTitle"
     >
       <div class="modal">
         <div class="modal-header">
-          <h2 id="gensetModalTitle">Add Genset</h2>
-          <button class="modal-close" id="gensetModalClose" type="button" aria-label="Close">
+          <h2 id="packageModalTitle">Add Package</h2>
+          <button class="modal-close" id="packageModalClose" type="button" aria-label="Close">
             &times;
           </button>
         </div>
-        <form id="gensetForm">
+        <form id="packageForm">
           <div class="modal-body">
             <div class="form-grid">
-              <div class="field full">
-                <label for="gensetProject">Project</label>
-                <select id="gensetProject" required>
+              <div class="field">
+                <label for="packageProject">Project <em>*</em></label>
+                <select id="packageProject" required>
                   <option value="">Select project</option>
                 </select>
               </div>
               <div class="field">
-                <label for="gensetName">Genset Name</label>
-                <input id="gensetName" type="text" required />
-              </div>
-              <div class="field">
-                <label for="gensetTag">Equipment Tag</label>
-                <input id="gensetTag" type="text" />
+                <label for="packageType">Package Type <em>*</em></label>
+                <select id="packageType" required>
+                  <option value="">Select package type</option>
+                </select>
               </div>
               <div class="field full">
-                <label for="gensetSerial">Serial Number</label>
-                <input id="gensetSerial" type="text" />
+                <label for="packageName">Package Name <em>*</em></label>
+                <input id="packageName" type="text" required />
+              </div>
+              <div class="field">
+                <label for="packageTag">Package Tag</label>
+                <input id="packageTag" type="text" />
+              </div>
+              <div class="field">
+                <label for="packageSerial">Serial Number</label>
+                <input id="packageSerial" type="text" />
               </div>
             </div>
           </div>
           <div class="modal-footer">
-            <button class="button secondary" type="button" id="gensetCancel">Cancel</button>
-            <button class="button" type="submit" id="gensetSave">Save genset</button>
+            <button class="button secondary" type="button" id="packageCancel">Cancel</button>
+            <button class="button" type="submit" id="packageSave">Save package</button>
           </div>
         </form>
       </div>
     </div>
+
+    <!-- Add Package Type modal -->
+    <div
+      class="modal-backdrop hidden"
+      id="packageTypeModal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="packageTypeModalTitle"
+    >
+      <div class="modal">
+        <div class="modal-header">
+          <h2 id="packageTypeModalTitle">Add Package Type</h2>
+          <button class="modal-close" id="packageTypeModalClose" type="button" aria-label="Close">
+            &times;
+          </button>
+        </div>
+        <form id="packageTypeForm">
+          <div class="modal-body">
+            <div class="form-grid">
+              <div class="field full">
+                <label for="packageTypeName">Name <em>*</em></label>
+                <input id="packageTypeName" type="text" required placeholder="e.g. Pump" />
+              </div>
+            </div>
+            <p class="hint">
+              A "Running Hours" process value is created automatically for every new package type.
+            </p>
+          </div>
+          <div class="modal-footer">
+            <button class="button secondary" type="button" id="packageTypeCancel">Cancel</button>
+            <button class="button" type="submit" id="packageTypeSave">Save package type</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <!-- Add Service Item modal -->
     <div
       class="modal-backdrop hidden"
@@ -501,6 +531,7 @@
         </form>
       </div>
     </div>
+
     <!-- Add Schedule modal -->
     <div
       class="modal-backdrop hidden"
@@ -526,8 +557,8 @@
                 </select>
               </div>
               <div class="field">
-                <label for="schedGenset">Genset <em>*</em></label>
-                <select id="schedGenset" required disabled>
+                <label for="schedPackage">Package <em>*</em></label>
+                <select id="schedPackage" required disabled>
                   <option value="">Select project first</option>
                 </select>
               </div>
@@ -576,53 +607,121 @@
         </form>
       </div>
     </div>
-    <!-- Add Engine Hours modal -->
+
+    <!-- Add Process Value modal -->
     <div
       class="modal-backdrop hidden"
-      id="engineHoursModal"
+      id="pvAttributeModal"
       role="dialog"
       aria-modal="true"
-      aria-labelledby="engineHoursModalTitle"
+      aria-labelledby="pvAttributeModalTitle"
     >
       <div class="modal">
         <div class="modal-header">
-          <h2 id="engineHoursModalTitle">Add Engine Hours</h2>
-          <button class="modal-close" id="engineHoursModalClose" type="button" aria-label="Close">
+          <h2 id="pvAttributeModalTitle">Add Process Value</h2>
+          <button class="modal-close" id="pvAttributeModalClose" type="button" aria-label="Close">
             &times;
           </button>
         </div>
-        <form id="engineHoursForm">
+        <form id="pvAttributeForm">
           <div class="modal-body">
             <div class="form-grid">
               <div class="field">
-                <label for="ehProject">Project <em>*</em></label>
-                <select id="ehProject" required>
-                  <option value="">Select project</option>
+                <label for="pvAttrPackageType">Package Type <em>*</em></label>
+                <select id="pvAttrPackageType" required>
+                  <option value="">Select package type</option>
                 </select>
               </div>
               <div class="field">
-                <label for="ehGenset">Genset <em>*</em></label>
-                <select id="ehGenset" required disabled>
-                  <option value="">Select project first</option>
+                <label for="pvAttrDataType">Data Type <em>*</em></label>
+                <select id="pvAttrDataType" required>
+                  <option value="">Select data type</option>
                 </select>
               </div>
-              <div class="field">
-                <label for="ehReadingDate">Reading Date <em>*</em></label>
-                <input id="ehReadingDate" type="date" required />
+              <div class="field full">
+                <label for="pvAttrName">Name <em>*</em></label>
+                <input id="pvAttrName" type="text" required placeholder="e.g. Discharge Pressure" />
               </div>
               <div class="field">
-                <label for="ehHours">Engine Hours <em>*</em></label>
-                <input id="ehHours" type="number" min="0" step="0.1" required placeholder="e.g. 1250.5" />
+                <label for="pvAttrUnit">Unit</label>
+                <input id="pvAttrUnit" type="text" placeholder="e.g. bar" />
+              </div>
+              <div class="field full">
+                <label for="pvAttrDescription">Description</label>
+                <textarea id="pvAttrDescription" placeholder="Optional details"></textarea>
               </div>
             </div>
           </div>
           <div class="modal-footer">
-            <button class="button secondary" type="button" id="engineHoursCancel">Cancel</button>
-            <button class="button" type="submit" id="engineHoursSave">Save reading</button>
+            <button class="button secondary" type="button" id="pvAttributeCancel">Cancel</button>
+            <button class="button" type="submit" id="pvAttributeSave">Save process value</button>
           </div>
         </form>
       </div>
     </div>
+
+    <!-- Add Reading modal -->
+    <div
+      class="modal-backdrop hidden"
+      id="readingModal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="readingModalTitle"
+    >
+      <div class="modal">
+        <div class="modal-header">
+          <h2 id="readingModalTitle">Add Reading</h2>
+          <button class="modal-close" id="readingModalClose" type="button" aria-label="Close">
+            &times;
+          </button>
+        </div>
+        <form id="readingForm">
+          <div class="modal-body">
+            <div class="form-grid">
+              <div class="field">
+                <label for="rdProject">Project <em>*</em></label>
+                <select id="rdProject" required>
+                  <option value="">Select project</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="rdPackage">Package <em>*</em></label>
+                <select id="rdPackage" required disabled>
+                  <option value="">Select project first</option>
+                </select>
+              </div>
+              <div class="field full">
+                <label for="rdAttribute">Process Value <em>*</em></label>
+                <select id="rdAttribute" required disabled>
+                  <option value="">Select package first</option>
+                </select>
+              </div>
+              <div class="field full" id="rdValueField">
+                <label for="rdValueInput" id="rdValueLabel">Value <em>*</em></label>
+                <input id="rdValueInput" type="text" disabled placeholder="Select a process value first" />
+              </div>
+              <div class="field">
+                <label for="rdReadingDate">Reading Date <em>*</em></label>
+                <input id="rdReadingDate" type="date" required />
+              </div>
+              <div class="field">
+                <label for="rdPerformedBy">Performed By</label>
+                <input id="rdPerformedBy" type="text" />
+              </div>
+              <div class="field full">
+                <label for="rdNotes">Notes</label>
+                <textarea id="rdNotes" placeholder="Optional notes"></textarea>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="button secondary" type="button" id="readingCancel">Cancel</button>
+            <button class="button" type="submit" id="readingSave">Save reading</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
   </body>
 </html>

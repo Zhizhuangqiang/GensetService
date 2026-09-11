@@ -7,12 +7,15 @@ const ENDPOINTS = {
   serviceStatus: "/api/servicestatus",
   recent: (limit) => `/api/dashboard/recent?limit=${encodeURIComponent(limit)}`,
   projects: "/api/projects",
-  gensets: "/api/gensets",
+  packages: "/api/packages",
+  packageTypes: "/api/packagetypes",
   serviceItems: "/api/serviceitems",
   schedules: "/api/schedules",
   activeSchedules: "/api/schedules?active=true",
   serviceRecords: "/api/servicerecords",
-  engineHours: "/api/enginehours"
+  pvDataTypes: "/api/pvdatatypes",
+  pvAttributes: "/api/pvattributes",
+  pvLog: "/api/pvlog"
 };
 
 const state = {
@@ -21,22 +24,7 @@ const state = {
   recent: [],
   currentView: "dashboard",
   currentSystem: "projects",
-  loading: false,
-  // Raw (unfiltered) datasets for the systems views that support filtering.
-  systemsRaw: {
-    gensets: [],
-    schedules: [],
-    enginehours: []
-  },
-  // Full genset directory (id, project_id, project_name, name, equipment_tag),
-  // used to build the cascading Project -> Genset filter dropdowns.
-  gensetDirectory: [],
-  gensetDirectoryLoaded: false,
-  // Current filter selections for the Systems view.
-  systemsFilter: {
-    projectId: "",
-    gensetId: ""
-  }
+  loading: false
 };
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -57,28 +45,14 @@ const elements = {
   statusFilter: $("#statusFilter"),
   statusSearch: $("#statusSearch"),
   recentLimit: $("#recentLimit"),
-  systemSelect: $("#systemSelect"),
-  systemsFilterRow: $("#systemsFilterRow"),
-  systemsFilterProjectWrap: $("#systemsFilterProjectWrap"),
-  systemsFilterGensetWrap: $("#systemsFilterGensetWrap"),
-  systemsFilterProject: $("#systemsFilterProject"),
-  systemsFilterGenset: $("#systemsFilterGenset")
+  systemSelect: $("#systemSelect")
 };
 
 const viewMetadata = {
-  dashboard: ["Dashboard", "Genset maintenance overview"],
+  dashboard: ["Dashboard", "Package maintenance overview"],
   maintenance: ["Service Status", "Current maintenance condition for every active schedule"],
-  recent: ["Recent Service", "Completed genset maintenance records"],
-  systems: ["Systems", "Projects, gensets, service items and schedules"]
-};
-
-/* Which categories show which filter controls in the Systems view. */
-const SYSTEMS_FILTER_CONFIG = {
-  projects: { project: false, genset: false },
-  serviceitems: { project: false, genset: false },
-  gensets: { project: true, genset: false },
-  schedules: { project: true, genset: true },
-  enginehours: { project: true, genset: true }
+  recent: ["Recent Service", "Completed package maintenance records"],
+  systems: ["Systems", "Projects, packages, service items, schedules and process values"]
 };
 
 /* ---------------- Helpers ---------------- */
@@ -145,6 +119,27 @@ function statusBadge(status) {
   return `<span class="status-badge ${safeStatus}">${escapeHtml(statusLabel(safeStatus))}</span>`;
 }
 
+/* Combines a package's name with optional type/tag into a two-line cell,
+ * matching the earlier "name + small subtext" presentation style. */
+function packageCell(name, typeName, tag) {
+  const meta = [typeName, tag].filter(Boolean).join(" · ");
+  return `<strong>${escapeHtml(name ?? "–")}</strong>${
+    meta ? `<br><small>${escapeHtml(meta)}</small>` : ""
+  }`;
+}
+
+/* Renders a pv_log "value" (already parsed from jsonb by the API as a
+ * JS boolean / number / string) for display, appending the unit when
+ * present and numeric. */
+function formatPvValue(value, dataTypeName, unit) {
+  if (value === null || value === undefined) return "–";
+  if (dataTypeName === "boolean") return value ? "Yes" : "No";
+  if (dataTypeName === "numeric") {
+    return unit ? `${formatNumber(value)} ${escapeHtml(unit)}` : formatNumber(value);
+  }
+  return escapeHtml(String(value));
+}
+
 async function apiFetch(url) {
   const response = await fetch(url, { headers: { Accept: "application/json" } });
   const contentType = response.headers.get("content-type") || "";
@@ -184,34 +179,36 @@ async function fillProjectSelect(selectId) {
   return projects;
 }
 
-/* Fill a genset <select> with gensets in the given project. */
-async function fillGensetsForProject(projectId, selectId) {
+/* Fill a package <select> with packages belonging to the given project.
+ * Returns the filtered package list (each including package_type_id so
+ * callers can look up the type without a second request). */
+async function fillPackagesForProject(projectId, selectId) {
   const select = $(selectId);
   if (!projectId) {
     select.innerHTML = '<option value="">Select project first</option>';
     select.disabled = true;
     return [];
   }
-  const gensets = itemsOf(await apiFetch(ENDPOINTS.gensets)).filter(
-    (g) => Number(g.project_id) === Number(projectId)
+  const packages = itemsOf(await apiFetch(ENDPOINTS.packages)).filter(
+    (pkg) => Number(pkg.project_id) === Number(projectId)
   );
-  if (!gensets.length) {
-    select.innerHTML = '<option value="">No gensets in this project</option>';
+  if (!packages.length) {
+    select.innerHTML = '<option value="">No packages in this project</option>';
     select.disabled = true;
     return [];
   }
   select.innerHTML =
-    '<option value="">Select genset</option>' +
-    gensets
+    '<option value="">Select package</option>' +
+    packages
       .map(
-        (g) =>
-          `<option value="${g.id}">${escapeHtml(g.name)}${
-            g.equipment_tag ? " (" + escapeHtml(g.equipment_tag) + ")" : ""
+        (pkg) =>
+          `<option value="${pkg.id}">${escapeHtml(pkg.name)}${
+            pkg.package_tag ? " (" + escapeHtml(pkg.package_tag) + ")" : ""
           }</option>`
       )
       .join("");
   select.disabled = false;
-  return gensets;
+  return packages;
 }
 
 /* ---------------- UI state ---------------- */
@@ -273,7 +270,7 @@ function renderDashboard(summary) {
     metricOk: summary.okItems,
     metricNotSet: summary.notSetItems,
     activeProjects: summary.activeProjects,
-    activeGensets: summary.activeGensets,
+    activePackages: summary.activePackages,
     activeServiceItems: summary.activeServiceItems,
     activeSchedules: summary.activeSchedules,
     serviceRecords: summary.serviceRecords,
@@ -301,7 +298,7 @@ function renderNextDue() {
     <div class="due-item">
       <div>
         <strong>${escapeHtml(item.service_item_name)}</strong>
-        <span>${escapeHtml(item.project_name)} · ${escapeHtml(item.genset_name)}</span>
+        <span>${escapeHtml(item.project_name)} · ${escapeHtml(item.package_name)}</span>
       </div>
       <div class="due-date">
         ${statusBadge(item.status)}
@@ -318,7 +315,7 @@ function renderStatusTable() {
   const search = elements.statusSearch.value.trim().toLowerCase();
   const items = state.statuses.filter((item) => {
     const statusMatch = status === "ALL" || item.status === status;
-    const haystack = [item.project_name, item.genset_name, item.equipment_tag, item.service_item_name]
+    const haystack = [item.project_name, item.package_name, item.package_tag, item.service_item_name]
       .filter(Boolean)
       .join(" ")
       .toLowerCase();
@@ -332,14 +329,16 @@ function renderStatusTable() {
     <tr>
       <td>${statusBadge(item.status)}</td>
       <td>${escapeHtml(item.project_name)}</td>
-      <td><strong>${escapeHtml(item.genset_name)}</strong>${
-        item.equipment_tag ? `<br><small>${escapeHtml(item.equipment_tag)}</small>` : ""
-      }</td>
+      <td>${packageCell(item.package_name, item.package_type_name, item.package_tag)}</td>
       <td>${escapeHtml(item.service_item_name)}</td>
       <td>${formatDate(item.last_service_date)}</td>
       <td>${formatDate(item.next_due_date)}</td>
       <td>${item.days_remaining == null ? "–" : formatNumber(item.days_remaining)}</td>
-      <td>${formatNumber(item.interval_days ?? item.period_days)} days</td>
+      <td>${formatNumber(item.interval_days)} days${
+        item.track_running_hours && item.interval_running_hours
+          ? `<br><small>${formatNumber(item.interval_running_hours)} hrs</small>`
+          : ""
+      }</td>
     </tr>
   `
     )
@@ -355,7 +354,7 @@ function recentRows(items) {
     <tr>
       <td>${formatDate(item.service_date)}</td>
       <td>${escapeHtml(item.project_name)}</td>
-      <td>${escapeHtml(item.genset_name)}</td>
+      <td>${packageCell(item.package_name, item.package_type_name, item.package_tag)}</td>
       <td>${escapeHtml(item.service_item_name)}</td>
       <td>${escapeHtml(item.performed_by || "–")}</td>
       <td>${escapeHtml(item.work_order_number || "–")}</td>
@@ -377,7 +376,7 @@ function renderRecent() {
     <tr>
       <td>${formatDate(item.service_date)}</td>
       <td>${escapeHtml(item.project_name)}</td>
-      <td>${escapeHtml(item.genset_name)}</td>
+      <td>${packageCell(item.package_name, item.package_type_name, item.package_tag)}</td>
       <td>${escapeHtml(item.service_item_name)}</td>
       <td>${escapeHtml(item.performed_by || "–")}</td>
       <td>${escapeHtml(item.work_order_number || "–")}</td>
@@ -396,13 +395,14 @@ async function loadRecent() {
   renderRecent();
 }
 
-async function loadEngineHoursCount() {
+async function loadReadingsCount() {
   try {
-    const data = await apiFetch(ENDPOINTS.engineHours);
-    const el = $("#engineHoursCount");
+    const data = await apiFetch(ENDPOINTS.pvLog);
+    const el = $("#readingsCount");
     if (el) el.textContent = formatNumber(data.count ?? itemsOf(data).length);
   } catch (error) {
-    console.warn("Engine hours count unavailable", error);
+    // Non-fatal for the dashboard; leave the count as-is.
+    console.warn("Readings count unavailable", error);
   }
 }
 
@@ -423,7 +423,7 @@ async function loadAll({ notify = false } = {}) {
     renderDashboard(dashboard);
     renderNextDue();
     renderStatusTable();
-    loadEngineHoursCount();
+    loadReadingsCount();
     setConnection(true);
     elements.lastUpdated.textContent = `Updated ${new Intl.DateTimeFormat(undefined, {
       hour: "2-digit",
@@ -439,154 +439,6 @@ async function loadAll({ notify = false } = {}) {
     elements.refreshButton.disabled = false;
     elements.refreshButton.textContent = "Refresh";
   }
-}
-
-/* ---------------------------------------------------------------
- * Genset directory (cached) — used to build the Project -> Genset
- * cascading filter dropdowns in the Systems view.
- * ------------------------------------------------------------- */
-async function ensureGensetDirectory(force = false) {
-  if (state.gensetDirectoryLoaded && !force) return state.gensetDirectory;
-  state.gensetDirectory = itemsOf(await apiFetch(ENDPOINTS.gensets));
-  state.gensetDirectoryLoaded = true;
-  return state.gensetDirectory;
-}
-
-function directoryProjects() {
-  const seen = new Map();
-  state.gensetDirectory.forEach((g) => {
-    if (g.project_id != null && !seen.has(Number(g.project_id))) {
-      seen.set(Number(g.project_id), g.project_name ?? `Project ${g.project_id}`);
-    }
-  });
-  return [...seen.entries()]
-    .map(([id, name]) => ({ id, name }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-}
-
-function directoryGensetsForProject(projectId) {
-  const list = projectId
-    ? state.gensetDirectory.filter((g) => Number(g.project_id) === Number(projectId))
-    : state.gensetDirectory.slice();
-  return list.sort((a, b) => a.name.localeCompare(b.name));
-}
-
-/* ---------------------------------------------------------------
- * Systems view filter row: configure visibility + populate options
- * for the currently selected category.
- * ------------------------------------------------------------- */
-function populateFilterProjectOptions() {
-  const projects = directoryProjects();
-  elements.systemsFilterProject.innerHTML =
-    '<option value="">All projects</option>' +
-    projects.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join("");
-}
-
-function populateFilterGensetOptions(projectId) {
-  const gensets = directoryGensetsForProject(projectId);
-  elements.systemsFilterGenset.innerHTML =
-    '<option value="">All gensets</option>' +
-    gensets
-      .map(
-        (g) =>
-          `<option value="${g.id}">${escapeHtml(g.name)}${
-            g.equipment_tag ? " (" + escapeHtml(g.equipment_tag) + ")" : ""
-          }${!projectId ? " — " + escapeHtml(g.project_name ?? "") : ""}</option>`
-      )
-      .join("");
-}
-
-async function configureSystemsFilters(systemKey) {
-  const config = SYSTEMS_FILTER_CONFIG[systemKey] || { project: false, genset: false };
-
-  // reset filter selections whenever the category changes
-  state.systemsFilter = { projectId: "", gensetId: "" };
-
-  if (!config.project && !config.genset) {
-    elements.systemsFilterRow.classList.add("hidden");
-    return;
-  }
-
-  await ensureGensetDirectory();
-
-  elements.systemsFilterRow.classList.remove("hidden");
-  elements.systemsFilterProjectWrap.classList.toggle("hidden", !config.project);
-  elements.systemsFilterGensetWrap.classList.toggle("hidden", !config.genset);
-
-  if (config.project) {
-    populateFilterProjectOptions();
-    elements.systemsFilterProject.value = "";
-  }
-  if (config.genset) {
-    populateFilterGensetOptions("");
-    elements.systemsFilterGenset.value = "";
-  }
-}
-
-/* Re-render the currently visible systems table using the cached raw
- * dataset and the current filter selections (no re-fetch needed). */
-function applySystemsFilters() {
-  const key = state.currentSystem;
-  const { projectId, gensetId } = state.systemsFilter;
-
-  if (key === "gensets") {
-    const rows = state.systemsRaw.gensets.filter((g) => {
-      if (gensetId && Number(g.id) !== Number(gensetId)) return false;
-      if (projectId && Number(g.project_id) !== Number(projectId)) return false;
-      return true;
-    });
-    renderGensetsTable(rows);
-    return;
-  }
-
-  if (key === "schedules") {
-    const rows = state.systemsRaw.schedules.filter((s) =>
-      rowMatchesGensetAndProject(s, projectId, gensetId)
-    );
-    renderSchedulesTable(rows);
-    return;
-  }
-
-  if (key === "enginehours") {
-    const rows = state.systemsRaw.enginehours.filter((r) =>
-      rowMatchesGensetAndProject(r, projectId, gensetId)
-    );
-    renderEngineHoursTable(rows);
-  }
-}
-
-/* Match a schedule/engine-hours row against the selected project/genset
- * filters. Prefers explicit genset_id/project_id on the row; falls back
- * to matching by genset name + equipment tag (scoped within the already
- * project-filtered directory) when those ids are not present. */
-function rowMatchesGensetAndProject(row, projectId, gensetId) {
-  if (gensetId) {
-    if (row.genset_id != null) {
-      return Number(row.genset_id) === Number(gensetId);
-    }
-    const gensetEntry = state.gensetDirectory.find((g) => Number(g.id) === Number(gensetId));
-    if (gensetEntry) {
-      return (
-        row.genset_name === gensetEntry.name &&
-        (row.equipment_tag ?? null) === (gensetEntry.equipment_tag ?? null)
-      );
-    }
-    return true;
-  }
-
-  if (projectId) {
-    if (row.project_id != null) {
-      return Number(row.project_id) === Number(projectId);
-    }
-    if (row.genset_id != null) {
-      const gensetEntry = state.gensetDirectory.find((g) => Number(g.id) === Number(row.genset_id));
-      if (gensetEntry) return Number(gensetEntry.project_id) === Number(projectId);
-    }
-    const projectEntry = directoryProjects().find((p) => Number(p.id) === Number(projectId));
-    if (projectEntry) return row.project_name === projectEntry.name;
-  }
-
-  return true;
 }
 
 /* ---------------------------------------------------------------
@@ -622,93 +474,46 @@ async function loadProjectsView() {
   );
 }
 
-function renderGensetsTable(gensets) {
+async function loadPackagesView() {
+  const packages = itemsOf(await apiFetch(ENDPOINTS.packages));
   renderSystemsTable(
-    "Gensets",
-    `Generator set master data (${gensets.length} shown)`,
-    `<tr><th>ID</th><th>Name</th><th>Equipment Tag</th><th>Project</th><th>Active</th></tr>`,
-    gensets
+    "Packages",
+    "Package master data (gensets, pumps and other equipment)",
+    `<tr><th>ID</th><th>Name</th><th>Package Tag</th><th>Serial Number</th><th>Project</th><th>Type</th><th>Active</th></tr>`,
+    packages
       .map(
-        (g) => `
+        (pkg) => `
       <tr>
-        <td>${escapeHtml(g.id)}</td>
-        <td>${escapeHtml(g.name)}</td>
-        <td>${escapeHtml(g.equipment_tag ?? "–")}</td>
-        <td>${escapeHtml(g.project_name ?? "–")}</td>
-        <td>${g.active ? "Yes" : "No"}</td>
+        <td>${escapeHtml(pkg.id)}</td>
+        <td>${escapeHtml(pkg.name)}</td>
+        <td>${escapeHtml(pkg.package_tag ?? "–")}</td>
+        <td>${escapeHtml(pkg.serial_number ?? "–")}</td>
+        <td>${escapeHtml(pkg.project_name ?? "–")}</td>
+        <td>${escapeHtml(pkg.package_type_name ?? "–")}</td>
+        <td>${pkg.active ? "Yes" : "No"}</td>
       </tr>`
       )
       .join("")
   );
 }
 
-async function loadGensetsView() {
-  const gensets = itemsOf(await apiFetch(ENDPOINTS.gensets));
-  state.systemsRaw.gensets = gensets;
-  // keep the directory fresh too, since it powers the filter dropdowns
-  state.gensetDirectory = gensets;
-  state.gensetDirectoryLoaded = true;
-  applySystemsFilters();
-}
-
-function renderSchedulesTable(schedules) {
+async function loadPackageTypesView() {
+  const types = itemsOf(await apiFetch(ENDPOINTS.packageTypes));
   renderSystemsTable(
-    "Active Schedules",
-    `Genset maintenance schedules (${schedules.length} shown)`,
-    `<tr><th>ID</th><th>Project</th><th>Genset</th><th>Service Item</th><th>Start Date</th><th>Interval (days)</th><th>Warning (days)</th><th>Active</th></tr>`,
-    schedules
+    "Package Types",
+    "Categories of packages (Genset, Pump, ...)",
+    `<tr><th>ID</th><th>Name</th><th>Active</th></tr>`,
+    types
       .map(
-        (s) => `
+        (t) => `
       <tr>
-        <td>${escapeHtml(s.id)}</td>
-        <td>${escapeHtml(s.project_name ?? "–")}</td>
-        <td><strong>${escapeHtml(s.genset_name ?? "–")}</strong>${
-          s.equipment_tag ? `<br><small>${escapeHtml(s.equipment_tag)}</small>` : ""
-        }</td>
-        <td>${escapeHtml(s.service_item_name ?? "–")}</td>
-        <td>${formatDate(s.schedule_start_date)}</td>
-        <td>${formatNumber(s.interval_days ?? s.period_days)}</td>
-        <td>${formatNumber(s.warning_days)}</td>
-        <td>${s.active ? "Yes" : "No"}</td>
+        <td>${escapeHtml(t.id)}</td>
+        <td>${escapeHtml(t.name)}</td>
+        <td>${t.active ? "Yes" : "No"}</td>
       </tr>`
       )
       .join("")
   );
-}
-
-async function loadSchedulesView() {
-  const schedules = itemsOf(await apiFetch(ENDPOINTS.activeSchedules));
-  state.systemsRaw.schedules = schedules;
-  applySystemsFilters();
-}
-
-function renderEngineHoursTable(readings) {
-  renderSystemsTable(
-    "Engine Hours",
-    `Genset engine-hour readings (${readings.length} shown)`,
-    `<tr><th>ID</th><th>Project</th><th>Genset</th><th>Reading Date</th><th>Hours</th><th>Recorded</th></tr>`,
-    readings
-      .map(
-        (r) => `
-      <tr>
-        <td>${escapeHtml(r.id)}</td>
-        <td>${escapeHtml(r.project_name ?? "–")}</td>
-        <td><strong>${escapeHtml(r.genset_name ?? "–")}</strong>${
-          r.equipment_tag ? `<br><small>${escapeHtml(r.equipment_tag)}</small>` : ""
-        }</td>
-        <td>${formatDate(r.reading_date)}</td>
-        <td>${formatNumber(r.hours)}</td>
-        <td>${formatDateTime(r.created_at)}</td>
-      </tr>`
-      )
-      .join("")
-  );
-}
-
-async function loadEngineHoursView() {
-  const readings = itemsOf(await apiFetch(ENDPOINTS.engineHours));
-  state.systemsRaw.enginehours = readings;
-  applySystemsFilters();
 }
 
 async function loadServiceItemsView() {
@@ -731,12 +536,91 @@ async function loadServiceItemsView() {
   );
 }
 
+function trackFlag(on) {
+  return on ? "Yes" : "–";
+}
+
+async function loadSchedulesView() {
+  const schedules = itemsOf(await apiFetch(ENDPOINTS.activeSchedules));
+  renderSystemsTable(
+    "Active Schedules",
+    "Package maintenance schedules",
+    `<tr><th>ID</th><th>Project</th><th>Package</th><th>Service Item</th><th>Start Date</th><th>Interval (days)</th><th>Interval (hours)</th><th>Warning (days)</th><th>Track Days</th><th>Track Hours</th><th>Active</th></tr>`,
+    schedules
+      .map(
+        (s) => `
+      <tr>
+        <td>${escapeHtml(s.id)}</td>
+        <td>${escapeHtml(s.project_name ?? "–")}</td>
+        <td>${packageCell(s.package_name, s.package_type_name, s.package_tag)}</td>
+        <td>${escapeHtml(s.service_item_name ?? "–")}</td>
+        <td>${formatDate(s.schedule_start_date)}</td>
+        <td>${s.interval_days == null ? "–" : formatNumber(s.interval_days)}</td>
+        <td>${s.interval_running_hours == null ? "–" : formatNumber(s.interval_running_hours)}</td>
+        <td>${s.warning_days == null ? "–" : formatNumber(s.warning_days)}</td>
+        <td>${trackFlag(s.track_days)}</td>
+        <td>${trackFlag(s.track_running_hours)}</td>
+        <td>${s.active ? "Yes" : "No"}</td>
+      </tr>`
+      )
+      .join("")
+  );
+}
+
+async function loadPvAttributesView() {
+  const attributes = itemsOf(await apiFetch(ENDPOINTS.pvAttributes));
+  renderSystemsTable(
+    "Process Values",
+    "Loggable readings defined per package type",
+    `<tr><th>ID</th><th>Package Type</th><th>Name</th><th>Data Type</th><th>Unit</th><th>Description</th><th>Active</th></tr>`,
+    attributes
+      .map(
+        (a) => `
+      <tr>
+        <td>${escapeHtml(a.id)}</td>
+        <td>${escapeHtml(a.package_type_name ?? "–")}</td>
+        <td>${escapeHtml(a.name)}</td>
+        <td>${escapeHtml(a.data_type_name ?? "–")}</td>
+        <td>${escapeHtml(a.unit ?? "–")}</td>
+        <td>${escapeHtml(a.description ?? "–")}</td>
+        <td>${a.active ? "Yes" : "No"}</td>
+      </tr>`
+      )
+      .join("")
+  );
+}
+
+async function loadReadingsView() {
+  const readings = itemsOf(await apiFetch(ENDPOINTS.pvLog));
+  renderSystemsTable(
+    "Readings",
+    "Logged process value readings",
+    `<tr><th>ID</th><th>Project</th><th>Package</th><th>Process Value</th><th>Value</th><th>Reading Date</th><th>Recorded</th></tr>`,
+    readings
+      .map(
+        (r) => `
+      <tr>
+        <td>${escapeHtml(r.id)}</td>
+        <td>${escapeHtml(r.project_name ?? "–")}</td>
+        <td>${packageCell(r.package_name, null, r.package_tag)}</td>
+        <td>${escapeHtml(r.attribute_name ?? "–")}</td>
+        <td>${formatPvValue(r.value, r.data_type_name, r.unit)}</td>
+        <td>${formatDate(r.reading_date)}</td>
+        <td>${formatDateTime(r.created_at)}</td>
+      </tr>`
+      )
+      .join("")
+  );
+}
+
 const systemLoaders = {
   projects: loadProjectsView,
-  gensets: loadGensetsView,
+  packages: loadPackagesView,
+  packagetypes: loadPackageTypesView,
   serviceitems: loadServiceItemsView,
   schedules: loadSchedulesView,
-  enginehours: loadEngineHoursView
+  pvattributes: loadPvAttributesView,
+  readings: loadReadingsView
 };
 
 async function showSystem(systemKey) {
@@ -745,10 +629,9 @@ async function showSystem(systemKey) {
   state.currentSystem = systemKey;
   updateAddButton(systemKey);
   if (elements.systemSelect) elements.systemSelect.value = systemKey;
-  const addGensetButton = $("#addGensetButton");
-  if (addGensetButton) addGensetButton.classList.toggle("hidden", systemKey !== "gensets");
+  const addPackageButton = $("#addPackageButton");
+  if (addPackageButton) addPackageButton.classList.toggle("hidden", systemKey !== "packages");
   try {
-    await configureSystemsFilters(systemKey);
     await loader();
     setView("systems");
   } catch (error) {
@@ -756,38 +639,19 @@ async function showSystem(systemKey) {
   }
 }
 
-/* ---------------- Systems filter events ---------------- */
-async function onSystemsFilterProjectChange() {
-  const projectId = elements.systemsFilterProject.value;
-  state.systemsFilter.projectId = projectId;
-  state.systemsFilter.gensetId = "";
-
-  const config = SYSTEMS_FILTER_CONFIG[state.currentSystem] || {};
-  if (config.genset) {
-    populateFilterGensetOptions(projectId);
-    elements.systemsFilterGenset.value = "";
-  }
-  applySystemsFilters();
-}
-
-function onSystemsFilterGensetChange() {
-  state.systemsFilter.gensetId = elements.systemsFilterGenset.value;
-  applySystemsFilters();
-}
-
 /* ---------------- Add Service Record (cascading) ---------------- */
 const recordModal = $("#recordModal");
 const recordForm = $("#recordForm");
-const recordCache = { gensets: [], schedules: [] };
+const recordCache = { packages: [], schedules: [] };
 
 async function openRecordModal() {
   recordForm.reset();
   $("#recDate").value = new Date().toISOString().slice(0, 10);
-  const gensetSelect = $("#recGenset");
+  const packageSelect = $("#recPackage");
   const scheduleSelect = $("#recSchedule");
-  gensetSelect.innerHTML = '<option value="">Select project first</option>';
-  gensetSelect.disabled = true;
-  scheduleSelect.innerHTML = '<option value="">Select genset first</option>';
+  packageSelect.innerHTML = '<option value="">Select project first</option>';
+  packageSelect.disabled = true;
+  scheduleSelect.innerHTML = '<option value="">Select package first</option>';
   scheduleSelect.disabled = true;
   try {
     await fillProjectSelect("#recProject");
@@ -801,33 +665,33 @@ function closeRecordModal() {
   recordModal.classList.add("hidden");
 }
 
-async function onProjectChange() {
+async function onRecordProjectChange() {
   const projectId = Number($("#recProject").value);
   const scheduleSelect = $("#recSchedule");
-  scheduleSelect.innerHTML = '<option value="">Select genset first</option>';
+  scheduleSelect.innerHTML = '<option value="">Select package first</option>';
   scheduleSelect.disabled = true;
   try {
-    recordCache.gensets = await fillGensetsForProject(projectId, "#recGenset");
+    recordCache.packages = await fillPackagesForProject(projectId, "#recPackage");
   } catch (error) {
-    showAlert(`Unable to load gensets: ${error.message}`);
+    showAlert(`Unable to load packages: ${error.message}`);
   }
 }
 
-async function onGensetChange() {
-  const gensetId = Number($("#recGenset").value);
+async function onRecordPackageChange() {
+  const packageId = Number($("#recPackage").value);
   const scheduleSelect = $("#recSchedule");
-  if (!gensetId) {
-    scheduleSelect.innerHTML = '<option value="">Select genset first</option>';
+  if (!packageId) {
+    scheduleSelect.innerHTML = '<option value="">Select package first</option>';
     scheduleSelect.disabled = true;
     return;
   }
   try {
     const scheduleData = await apiFetch(ENDPOINTS.activeSchedules);
     recordCache.schedules = itemsOf(scheduleData).filter(
-      (s) => Number(s.genset_id) === gensetId
+      (s) => Number(s.package_id) === packageId
     );
     if (!recordCache.schedules.length) {
-      scheduleSelect.innerHTML = '<option value="">No schedules for this genset</option>';
+      scheduleSelect.innerHTML = '<option value="">No schedules for this package</option>';
       scheduleSelect.disabled = true;
       return;
     }
@@ -837,9 +701,7 @@ async function onGensetChange() {
         .map(
           (s) =>
             `<option value="${s.id}">${escapeHtml(s.service_item_name ?? "Service")}${
-              (s.interval_days ?? s.period_days)
-                ? " — every " + (s.interval_days ?? s.period_days) + " days"
-                : ""
+              s.interval_days ? " — every " + s.interval_days + " days" : ""
             }</option>`
         )
         .join("");
@@ -855,7 +717,7 @@ async function submitRecord(event) {
   const scheduleId = Number($("#recSchedule").value);
   const serviceDate = $("#recDate").value;
   if (!scheduleId) {
-    showAlert("Project, genset and service schedule are required.");
+    showAlert("Project, package and service schedule are required.");
     return;
   }
   if (!serviceDate) {
@@ -884,51 +746,97 @@ async function submitRecord(event) {
   }
 }
 
-/* ---------------- Add Genset ---------------- */
-const gensetModal = $("#gensetModal");
-const gensetForm = $("#gensetForm");
+/* ---------------- Add Package ---------------- */
+const packageModal = $("#packageModal");
+const packageForm = $("#packageForm");
 
-async function openGensetModal() {
-  gensetForm.reset();
+async function openPackageModal() {
+  packageForm.reset();
   try {
-    await fillProjectSelect("#gensetProject");
-    gensetModal.classList.remove("hidden");
+    await Promise.all([
+      fillProjectSelect("#packageProject"),
+      (async () => {
+        const types = itemsOf(await apiFetch(ENDPOINTS.packageTypes + "?active=true"));
+        $("#packageType").innerHTML =
+          '<option value="">Select package type</option>' +
+          types.map((t) => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join("");
+      })()
+    ]);
+    packageModal.classList.remove("hidden");
   } catch (error) {
-    showAlert(`Unable to open the genset form: ${error.message}`);
+    showAlert(`Unable to open the package form: ${error.message}`);
   }
 }
 
-function closeGensetModal() {
-  gensetModal.classList.add("hidden");
+function closePackageModal() {
+  packageModal.classList.add("hidden");
 }
 
-async function submitGenset(event) {
+async function submitPackage(event) {
   event.preventDefault();
-  const saveButton = $("#gensetSave");
+  const saveButton = $("#packageSave");
   const payload = {
-    project_id: Number($("#gensetProject").value),
-    name: $("#gensetName").value.trim(),
-    equipment_tag: $("#gensetTag").value.trim() || null,
-    serial_number: $("#gensetSerial").value.trim() || null
+    project_id: Number($("#packageProject").value),
+    package_type_id: Number($("#packageType").value),
+    name: $("#packageName").value.trim(),
+    package_tag: $("#packageTag").value.trim() || null,
+    serial_number: $("#packageSerial").value.trim() || null
   };
-  if (!payload.project_id || !payload.name) {
-    showAlert("Project and genset name are required.");
+  if (!payload.project_id || !payload.package_type_id || !payload.name) {
+    showAlert("Project, package type and package name are required.");
     return;
   }
   saveButton.disabled = true;
   saveButton.textContent = "Saving...";
   try {
-    await apiPost(ENDPOINTS.gensets, payload);
-    closeGensetModal();
-    showToast("Genset added");
-    await ensureGensetDirectory(true);
-    await loadGensetsView();
+    await apiPost(ENDPOINTS.packages, payload);
+    closePackageModal();
+    showToast("Package added");
+    await loadPackagesView();
     await loadAll({ notify: false });
   } catch (error) {
-    showAlert(`Unable to save genset: ${error.message}`);
+    showAlert(`Unable to save package: ${error.message}`);
   } finally {
     saveButton.disabled = false;
-    saveButton.textContent = "Save genset";
+    saveButton.textContent = "Save package";
+  }
+}
+
+/* ---------------- Add Package Type ---------------- */
+const packageTypeModal = $("#packageTypeModal");
+const packageTypeForm = $("#packageTypeForm");
+
+function openPackageTypeModal() {
+  packageTypeForm.reset();
+  packageTypeModal.classList.remove("hidden");
+  $("#packageTypeName").focus();
+}
+
+function closePackageTypeModal() {
+  packageTypeModal.classList.add("hidden");
+}
+
+async function submitPackageType(event) {
+  event.preventDefault();
+  const saveButton = $("#packageTypeSave");
+  const payload = { name: $("#packageTypeName").value.trim() };
+  if (!payload.name) {
+    showAlert("Package type name is required.");
+    return;
+  }
+  saveButton.disabled = true;
+  saveButton.textContent = "Saving...";
+  try {
+    await apiPost(ENDPOINTS.packageTypes, payload);
+    closePackageTypeModal();
+    showToast("Package type added — Running Hours tracking configured automatically");
+    await loadPackageTypesView();
+    await loadAll({ notify: false });
+  } catch (error) {
+    showAlert(`Unable to save package type: ${error.message}`);
+  } finally {
+    saveButton.disabled = false;
+    saveButton.textContent = "Save package type";
   }
 }
 
@@ -1017,7 +925,7 @@ async function submitServiceItem(event) {
 /* ---------------- Add Schedule (cascading) ---------------- */
 const scheduleModal = $("#scheduleModal");
 const scheduleForm = $("#scheduleForm");
-const scheduleCache = { gensets: [] };
+const scheduleCache = { packages: [] };
 
 async function openScheduleModal() {
   scheduleForm.reset();
@@ -1027,9 +935,9 @@ async function openScheduleModal() {
   if (trackDays) trackDays.checked = true;
   if (trackHours) trackHours.checked = false;
   $("#schedStartDate").value = new Date().toISOString().slice(0, 10);
-  const gensetSelect = $("#schedGenset");
-  gensetSelect.innerHTML = '<option value="">Select project first</option>';
-  gensetSelect.disabled = true;
+  const packageSelect = $("#schedPackage");
+  packageSelect.innerHTML = '<option value="">Select project first</option>';
+  packageSelect.disabled = true;
   try {
     const [, itemData] = await Promise.all([
       fillProjectSelect("#schedProject"),
@@ -1053,9 +961,9 @@ function closeScheduleModal() {
 async function onScheduleProjectChange() {
   const projectId = Number($("#schedProject").value);
   try {
-    scheduleCache.gensets = await fillGensetsForProject(projectId, "#schedGenset");
+    scheduleCache.packages = await fillPackagesForProject(projectId, "#schedPackage");
   } catch (error) {
-    showAlert(`Unable to load gensets: ${error.message}`);
+    showAlert(`Unable to load packages: ${error.message}`);
   }
 }
 
@@ -1064,7 +972,7 @@ async function submitSchedule(event) {
   const saveButton = $("#scheduleSave");
   const intervalHoursRaw = $("#schedIntervalHours") ? $("#schedIntervalHours").value : "";
   const payload = {
-    genset_id: Number($("#schedGenset").value),
+    package_id: Number($("#schedPackage").value),
     service_item_id: Number($("#schedServiceItem").value),
     interval_days: Number($("#schedIntervalDays").value),
     interval_running_hours: intervalHoursRaw === "" ? null : Number(intervalHoursRaw),
@@ -1074,8 +982,8 @@ async function submitSchedule(event) {
     schedule_start_date: $("#schedStartDate").value,
     notes: $("#schedNotes").value.trim() || null
   };
-  if (!payload.genset_id || !payload.service_item_id) {
-    showAlert("Project, genset and service item are required.");
+  if (!payload.package_id || !payload.service_item_id) {
+    showAlert("Project, package and service item are required.");
     return;
   }
   if (!payload.interval_days || payload.interval_days <= 0) {
@@ -1110,67 +1018,250 @@ async function submitSchedule(event) {
   }
 }
 
-/* ---------------- Add Engine Hours (cascading) ---------------- */
-const engineHoursModal = $("#engineHoursModal");
-const engineHoursForm = $("#engineHoursForm");
+/* ---------------- Add Process Value (pv_attributes) ---------------- */
+const pvAttributeModal = $("#pvAttributeModal");
+const pvAttributeForm = $("#pvAttributeForm");
 
-async function openEngineHoursModal() {
-  engineHoursForm.reset();
-  $("#ehReadingDate").value = new Date().toISOString().slice(0, 10);
-  const gensetSelect = $("#ehGenset");
-  gensetSelect.innerHTML = '<option value="">Select project first</option>';
-  gensetSelect.disabled = true;
+async function openPvAttributeModal() {
+  pvAttributeForm.reset();
   try {
-    await fillProjectSelect("#ehProject");
-    engineHoursModal.classList.remove("hidden");
+    const [types, dataTypes] = await Promise.all([
+      apiFetch(ENDPOINTS.packageTypes + "?active=true"),
+      apiFetch(ENDPOINTS.pvDataTypes)
+    ]);
+    $("#pvAttrPackageType").innerHTML =
+      '<option value="">Select package type</option>' +
+      itemsOf(types).map((t) => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join("");
+    $("#pvAttrDataType").innerHTML =
+      '<option value="">Select data type</option>' +
+      itemsOf(dataTypes)
+        .map((d) => `<option value="${d.id}">${escapeHtml(d.name)}</option>`)
+        .join("");
+    pvAttributeModal.classList.remove("hidden");
   } catch (error) {
-    showAlert(`Unable to open the engine hours form: ${error.message}`);
+    showAlert(`Unable to open the process value form: ${error.message}`);
   }
 }
 
-function closeEngineHoursModal() {
-  engineHoursModal.classList.add("hidden");
+function closePvAttributeModal() {
+  pvAttributeModal.classList.add("hidden");
 }
 
-async function onEngineHoursProjectChange() {
-  const projectId = Number($("#ehProject").value);
-  try {
-    await fillGensetsForProject(projectId, "#ehGenset");
-  } catch (error) {
-    showAlert(`Unable to load gensets: ${error.message}`);
-  }
-}
-
-async function submitEngineHours(event) {
+async function submitPvAttribute(event) {
   event.preventDefault();
-  const saveButton = $("#engineHoursSave");
+  const saveButton = $("#pvAttributeSave");
   const payload = {
-    genset_id: Number($("#ehGenset").value),
-    reading_date: $("#ehReadingDate").value,
-    hours: $("#ehHours").value === "" ? null : Number($("#ehHours").value)
+    package_type_id: Number($("#pvAttrPackageType").value),
+    data_type_id: Number($("#pvAttrDataType").value),
+    name: $("#pvAttrName").value.trim(),
+    unit: $("#pvAttrUnit").value.trim() || null,
+    description: $("#pvAttrDescription").value.trim() || null
   };
-  if (!payload.genset_id) {
-    showAlert("Project and genset are required.");
-    return;
-  }
-  if (!payload.reading_date) {
-    showAlert("Reading date is required.");
-    return;
-  }
-  if (payload.hours == null || !Number.isFinite(payload.hours) || payload.hours < 0) {
-    showAlert("Engine hours must be zero or greater.");
+  if (!payload.package_type_id || !payload.data_type_id || !payload.name) {
+    showAlert("Package type, data type and name are required.");
     return;
   }
   saveButton.disabled = true;
   saveButton.textContent = "Saving...";
   try {
-    await apiPost(ENDPOINTS.engineHours, payload);
-    closeEngineHoursModal();
-    showToast("Engine hours reading added");
-    await loadEngineHoursView();
-    await loadEngineHoursCount();
+    await apiPost(ENDPOINTS.pvAttributes, payload);
+    closePvAttributeModal();
+    showToast("Process value added");
+    await loadPvAttributesView();
+    await loadAll({ notify: false });
   } catch (error) {
-    showAlert(`Unable to save engine hours: ${error.message}`);
+    showAlert(`Unable to save process value: ${error.message}`);
+  } finally {
+    saveButton.disabled = false;
+    saveButton.textContent = "Save process value";
+  }
+}
+
+/* ---------------- Add Reading (cascading, dynamic value input) ---------------- */
+const readingModal = $("#readingModal");
+const readingForm = $("#readingForm");
+const readingCache = { packages: [], attributes: [] };
+
+async function openReadingModal() {
+  readingForm.reset();
+  $("#rdReadingDate").value = new Date().toISOString().slice(0, 10);
+  const packageSelect = $("#rdPackage");
+  const attributeSelect = $("#rdAttribute");
+  packageSelect.innerHTML = '<option value="">Select project first</option>';
+  packageSelect.disabled = true;
+  attributeSelect.innerHTML = '<option value="">Select package first</option>';
+  attributeSelect.disabled = true;
+  resetReadingValueField();
+  try {
+    await fillProjectSelect("#rdProject");
+    readingModal.classList.remove("hidden");
+  } catch (error) {
+    showAlert(`Unable to open the reading form: ${error.message}`);
+  }
+}
+
+function closeReadingModal() {
+  readingModal.classList.add("hidden");
+}
+
+function resetReadingValueField(message = "Select a process value first") {
+  $("#rdValueLabel").innerHTML = 'Value <em>*</em>';
+  $("#rdValueField").innerHTML = `
+    <label for="rdValueInput" id="rdValueLabel">Value <em>*</em></label>
+    <input id="rdValueInput" type="text" disabled placeholder="${escapeHtml(message)}" />
+  `;
+}
+
+async function onReadingProjectChange() {
+  const projectId = Number($("#rdProject").value);
+  const attributeSelect = $("#rdAttribute");
+  attributeSelect.innerHTML = '<option value="">Select package first</option>';
+  attributeSelect.disabled = true;
+  resetReadingValueField();
+  try {
+    readingCache.packages = await fillPackagesForProject(projectId, "#rdPackage");
+  } catch (error) {
+    showAlert(`Unable to load packages: ${error.message}`);
+  }
+}
+
+async function onReadingPackageChange() {
+  const packageId = Number($("#rdPackage").value);
+  const attributeSelect = $("#rdAttribute");
+  resetReadingValueField();
+  if (!packageId) {
+    attributeSelect.innerHTML = '<option value="">Select package first</option>';
+    attributeSelect.disabled = true;
+    return;
+  }
+  const selectedPackage = readingCache.packages.find((pkg) => Number(pkg.id) === packageId);
+  const packageTypeId = selectedPackage ? selectedPackage.package_type_id : null;
+  if (!packageTypeId) {
+    attributeSelect.innerHTML = '<option value="">Unable to determine package type</option>';
+    attributeSelect.disabled = true;
+    return;
+  }
+  try {
+    const data = await apiFetch(
+      `${ENDPOINTS.pvAttributes}?package_type_id=${encodeURIComponent(packageTypeId)}&active=true`
+    );
+    readingCache.attributes = itemsOf(data);
+    if (!readingCache.attributes.length) {
+      attributeSelect.innerHTML = '<option value="">No process values defined for this package type</option>';
+      attributeSelect.disabled = true;
+      return;
+    }
+    attributeSelect.innerHTML =
+      '<option value="">Select process value</option>' +
+      readingCache.attributes
+        .map(
+          (a) =>
+            `<option value="${a.id}">${escapeHtml(a.name)}${
+              a.unit ? " (" + escapeHtml(a.unit) + ")" : ""
+            }</option>`
+        )
+        .join("");
+    attributeSelect.disabled = false;
+  } catch (error) {
+    showAlert(`Unable to load process values: ${error.message}`);
+  }
+}
+
+function onReadingAttributeChange() {
+  const attributeId = Number($("#rdAttribute").value);
+  if (!attributeId) {
+    resetReadingValueField();
+    return;
+  }
+  const attribute = readingCache.attributes.find((a) => Number(a.id) === attributeId);
+  if (!attribute) {
+    resetReadingValueField();
+    return;
+  }
+  const labelText = attribute.unit ? `Value (${attribute.unit}) ` : "Value ";
+  let inputHtml;
+  if (attribute.data_type_name === "boolean") {
+    inputHtml = `
+      <select id="rdValueInput" required>
+        <option value="">Select...</option>
+        <option value="true">Yes</option>
+        <option value="false">No</option>
+      </select>
+    `;
+  } else if (attribute.data_type_name === "numeric") {
+    inputHtml = `<input id="rdValueInput" type="number" step="any" required placeholder="e.g. 1250.5" />`;
+  } else {
+    inputHtml = `<input id="rdValueInput" type="text" required placeholder="Enter a value" />`;
+  }
+  $("#rdValueField").innerHTML = `
+    <label for="rdValueInput" id="rdValueLabel">${escapeHtml(labelText)}<em>*</em></label>
+    ${inputHtml}
+  `;
+}
+
+async function submitReading(event) {
+  event.preventDefault();
+  const saveButton = $("#readingSave");
+  const packageId = Number($("#rdPackage").value);
+  const attributeId = Number($("#rdAttribute").value);
+  const readingDate = $("#rdReadingDate").value;
+  const valueInput = $("#rdValueInput");
+  const rawValue = valueInput ? valueInput.value : "";
+
+  if (!packageId) {
+    showAlert("Project and package are required.");
+    return;
+  }
+  if (!attributeId) {
+    showAlert("Process value is required.");
+    return;
+  }
+  if (!readingDate) {
+    showAlert("Reading date is required.");
+    return;
+  }
+  if (rawValue === "" || rawValue === undefined) {
+    showAlert("A value is required.");
+    return;
+  }
+
+  const attribute = readingCache.attributes.find((a) => Number(a.id) === attributeId);
+  let value;
+  if (attribute && attribute.data_type_name === "boolean") {
+    if (rawValue !== "true" && rawValue !== "false") {
+      showAlert("Select Yes or No for this process value.");
+      return;
+    }
+    value = rawValue === "true";
+  } else if (attribute && attribute.data_type_name === "numeric") {
+    value = Number(rawValue);
+    if (!Number.isFinite(value)) {
+      showAlert("Enter a valid number for this process value.");
+      return;
+    }
+  } else {
+    value = rawValue;
+  }
+
+  const payload = {
+    package_id: packageId,
+    pv_attribute_id: attributeId,
+    value,
+    reading_date: readingDate,
+    performed_by: $("#rdPerformedBy").value.trim() || null,
+    notes: $("#rdNotes").value.trim() || null
+  };
+
+  saveButton.disabled = true;
+  saveButton.textContent = "Saving...";
+  try {
+    await apiPost(ENDPOINTS.pvLog, payload);
+    closeReadingModal();
+    showToast("Reading added");
+    await loadReadingsView();
+    await loadReadingsCount();
+  } catch (error) {
+    showAlert(`Unable to save reading: ${error.message}`);
   } finally {
     saveButton.disabled = false;
     saveButton.textContent = "Save reading";
@@ -1178,15 +1269,17 @@ async function submitEngineHours(event) {
 }
 
 /* ---------------- Add button dispatcher ---------------- */
-// Gensets uses its own separate button (#addGensetButton), toggled in showSystem.
+// Packages uses its own separate button (#addPackageButton), toggled in showSystem.
 function updateAddButton(systemKey) {
   const btn = $("#addSystemButton");
   if (!btn) return;
   const map = {
     projects: { label: "+ Add Project", open: openProjectModal },
+    packagetypes: { label: "+ Add Package Type", open: openPackageTypeModal },
     serviceitems: { label: "+ Add Service Item", open: openServiceItemModal },
     schedules: { label: "+ Add Schedule", open: openScheduleModal },
-    enginehours: { label: "+ Add Engine Hours", open: openEngineHoursModal }
+    pvattributes: { label: "+ Add Process Value", open: openPvAttributeModal },
+    readings: { label: "+ Add Reading", open: openReadingModal }
   };
   const cfg = map[systemKey];
   if (cfg) {
@@ -1240,10 +1333,6 @@ function bindEvents() {
   });
   elements.refreshButton.addEventListener("click", () => loadAll({ notify: true }));
 
-  // Systems filter row (Project / Genset cascading filters)
-  elements.systemsFilterProject.addEventListener("change", onSystemsFilterProjectChange);
-  elements.systemsFilterGenset.addEventListener("change", onSystemsFilterGensetChange);
-
   // Add Service Record modal
   $("#addRecordButton").addEventListener("click", openRecordModal);
   $("#recordModalClose").addEventListener("click", closeRecordModal);
@@ -1252,8 +1341,8 @@ function bindEvents() {
   recordModal.addEventListener("click", (event) => {
     if (event.target === recordModal) closeRecordModal();
   });
-  $("#recProject").addEventListener("change", onProjectChange);
-  $("#recGenset").addEventListener("change", onGensetChange);
+  $("#recProject").addEventListener("change", onRecordProjectChange);
+  $("#recPackage").addEventListener("change", onRecordPackageChange);
 
   // Add Project modal
   $("#projectModalClose").addEventListener("click", closeProjectModal);
@@ -1263,13 +1352,21 @@ function bindEvents() {
     if (event.target === projectModal) closeProjectModal();
   });
 
-  // Add Genset modal
-  $("#addGensetButton").addEventListener("click", openGensetModal);
-  $("#gensetModalClose").addEventListener("click", closeGensetModal);
-  $("#gensetCancel").addEventListener("click", closeGensetModal);
-  gensetForm.addEventListener("submit", submitGenset);
-  gensetModal.addEventListener("click", (event) => {
-    if (event.target === gensetModal) closeGensetModal();
+  // Add Package modal
+  $("#addPackageButton").addEventListener("click", openPackageModal);
+  $("#packageModalClose").addEventListener("click", closePackageModal);
+  $("#packageCancel").addEventListener("click", closePackageModal);
+  packageForm.addEventListener("submit", submitPackage);
+  packageModal.addEventListener("click", (event) => {
+    if (event.target === packageModal) closePackageModal();
+  });
+
+  // Add Package Type modal
+  $("#packageTypeModalClose").addEventListener("click", closePackageTypeModal);
+  $("#packageTypeCancel").addEventListener("click", closePackageTypeModal);
+  packageTypeForm.addEventListener("submit", submitPackageType);
+  packageTypeModal.addEventListener("click", (event) => {
+    if (event.target === packageTypeModal) closePackageTypeModal();
   });
 
   // Add Service Item modal
@@ -1289,14 +1386,24 @@ function bindEvents() {
   });
   $("#schedProject").addEventListener("change", onScheduleProjectChange);
 
-  // Add Engine Hours modal
-  $("#engineHoursModalClose").addEventListener("click", closeEngineHoursModal);
-  $("#engineHoursCancel").addEventListener("click", closeEngineHoursModal);
-  engineHoursForm.addEventListener("submit", submitEngineHours);
-  engineHoursModal.addEventListener("click", (event) => {
-    if (event.target === engineHoursModal) closeEngineHoursModal();
+  // Add Process Value modal
+  $("#pvAttributeModalClose").addEventListener("click", closePvAttributeModal);
+  $("#pvAttributeCancel").addEventListener("click", closePvAttributeModal);
+  pvAttributeForm.addEventListener("submit", submitPvAttribute);
+  pvAttributeModal.addEventListener("click", (event) => {
+    if (event.target === pvAttributeModal) closePvAttributeModal();
   });
-  $("#ehProject").addEventListener("change", onEngineHoursProjectChange);
+
+  // Add Reading modal
+  $("#readingModalClose").addEventListener("click", closeReadingModal);
+  $("#readingCancel").addEventListener("click", closeReadingModal);
+  readingForm.addEventListener("submit", submitReading);
+  readingModal.addEventListener("click", (event) => {
+    if (event.target === readingModal) closeReadingModal();
+  });
+  $("#rdProject").addEventListener("change", onReadingProjectChange);
+  $("#rdPackage").addEventListener("change", onReadingPackageChange);
+  $("#rdAttribute").addEventListener("change", onReadingAttributeChange);
 
   elements.menuButton.addEventListener("click", () =>
     elements.sidebar.classList.contains("open") ? closeSidebar() : openSidebar()

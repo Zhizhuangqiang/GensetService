@@ -18,6 +18,7 @@
   --shadow: 0 8px 28px rgba(27, 52, 59, 0.08);
   --radius: 14px;
 }
+
 * { box-sizing: border-box; }
 html { color-scheme: light; }
 body {
@@ -31,6 +32,7 @@ button { cursor: pointer; }
 .hidden { display: none !important; }
 .skip-link { position: fixed; left: 12px; top: -60px; z-index: 100; padding: 10px 14px; background: #fff; color: var(--brand); border-radius: 8px; }
 .skip-link:focus { top: 12px; }
+
 /* ---- Layout shell ---- */
 .app-shell { min-height: 100vh; display: grid; grid-template-columns: 250px minmax(0, 1fr); }
 .sidebar { position: sticky; top: 0; height: 100vh; padding: 24px 16px; background: #102e31; color: white; display: flex; flex-direction: column; z-index: 30; }
@@ -53,6 +55,7 @@ button { cursor: pointer; }
 .topbar-actions { margin-left: auto; display: flex; align-items: center; gap: 12px; }
 .last-updated { color: var(--muted); font-size: 12px; }
 .menu-button { display: none; width: 42px; height: 42px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+
 /* ---- Buttons ---- */
 .button { padding: 9px 14px; border-radius: 9px; border: 1px solid var(--brand); background: var(--brand); color: #fff; font-weight: 650; }
 .button:hover { background: var(--brand-dark); }
@@ -64,9 +67,11 @@ button { cursor: pointer; }
 .button.ghost:hover { background: #e3e9ea; }
 .button:disabled { opacity: .6; cursor: wait; }
 .text-button { border: 0; background: transparent; color: var(--brand); font-weight: 700; }
+
 main { padding: 28px; }
 .alert { margin-bottom: 18px; padding: 13px 16px; border: 1px solid #fda29b; border-radius: 10px; background: var(--danger-soft); color: var(--danger); }
 .view { display: grid; gap: 22px; }
+
 /* ---- Metric cards ---- */
 .metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
 .metric-card { min-width: 0; padding: 18px; text-align: left; border: 1px solid var(--line); border-left-width: 5px; border-radius: var(--radius); background: var(--panel); box-shadow: var(--shadow); color: var(--text); }
@@ -78,19 +83,22 @@ main { padding: 28px; }
 .metric-card.warning { border-left-color: var(--warning); }
 .metric-card.success { border-left-color: var(--success); }
 .metric-card.neutral { border-left-color: var(--neutral); }
+
 /* ---- Panels ---- */
 .overview-grid { display: grid; grid-template-columns: minmax(280px, .8fr) minmax(420px, 1.2fr); gap: 22px; }
 .panel { min-width: 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); box-shadow: var(--shadow); overflow: hidden; }
 .panel-header { padding: 19px 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--line); }
 .panel-header h2 { margin: 0; font-size: 17px; }
 .panel-header p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
-.panel-header-actions { display: flex; align-items: flex-end; gap: 12px; }
+.panel-header-actions { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+
 /* ---- Overview list ---- */
 .overview-list { padding: 5px 20px; }
 .overview-list > div { padding: 13px 0; display: flex; justify-content: space-between; border-bottom: 1px solid var(--line); }
 .overview-list > div:last-child { border-bottom: 0; }
 .overview-list span { color: var(--muted); }
 .overview-list strong { font-size: 17px; }
+
 /* Make the clickable overview rows look identical to the static rows */
 .overview-list > .overview-link,
 .overview-list > .overview-static {
@@ -117,6 +125,7 @@ main { padding: 28px; }
 .overview-list > .overview-link { cursor: pointer; border-radius: 8px; transition: background 0.15s ease; }
 .overview-list > .overview-link:hover { background: var(--brand-soft); }
 .overview-list > .overview-link:focus-visible { outline: 3px solid rgba(15, 118, 110, 0.25); outline-offset: 2px; }
+
 /* ---- Due list ---- */
 .due-list { padding: 5px 20px; }
 .due-item { padding: 12px 0; display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 14px; align-items: center; border-bottom: 1px solid var(--line); }
@@ -125,12 +134,14 @@ main { padding: 28px; }
 .due-item strong { font-size: 14px; }
 .due-item span { margin-top: 3px; color: var(--muted); font-size: 12px; }
 .due-date { text-align: right; }
+
 /* ---- Status badges ---- */
 .status-badge { display: inline-flex; align-items: center; width: max-content; padding: 4px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; letter-spacing: .02em; white-space: nowrap; }
 .status-badge.OVERDUE { color: var(--danger); background: var(--danger-soft); }
 .status-badge.DUE_SOON { color: var(--warning); background: var(--warning-soft); }
 .status-badge.OK { color: var(--success); background: var(--success-soft); }
 .status-badge.NOT_SET { color: var(--neutral); background: var(--neutral-soft); }
+
 /* ---- Tables ---- */
 .table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; }
@@ -140,15 +151,18 @@ td { font-size: 13px; }
 tbody tr:hover { background: #fafcfc; }
 .empty-state { padding: 28px 20px; color: var(--muted); text-align: center; }
 .table-footer { padding: 11px 16px; color: var(--muted); font-size: 12px; }
+
 /* ---- Filters & form controls ---- */
 .filter-row { display: flex; gap: 12px; align-items: end; }
 .filter-row label, .compact-field { display: grid; gap: 5px; color: var(--muted); font-size: 11px; }
 select, input { min-height: 38px; padding: 8px 10px; border: 1px solid #cdd8db; border-radius: 8px; background: #fff; color: var(--text); }
 input { min-width: 250px; }
 select:focus, input:focus, button:focus-visible { outline: 3px solid rgba(15,118,110,.2); outline-offset: 1px; }
+
 .sidebar-backdrop { position: fixed; inset: 0; z-index: 25; background: rgba(0,0,0,.4); }
 .toast { position: fixed; right: 20px; bottom: 20px; z-index: 50; max-width: 380px; padding: 12px 16px; border-radius: 10px; background: #102e31; color: #fff; box-shadow: var(--shadow); }
-/* ---- Add Service Record modal ---- */
+
+/* ---- Add Service Record / general modal ---- */
 .modal-backdrop { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 20px; background: rgba(16,46,49,.55); }
 .modal { width: 100%; max-width: 540px; background: var(--panel); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
 .modal-header { padding: 18px 20px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }
@@ -162,7 +176,8 @@ select:focus, input:focus, button:focus-visible { outline: 3px solid rgba(15,118
 .field label em { color: var(--danger); font-style: normal; }
 .field textarea { min-height: 74px; padding: 8px 10px; border: 1px solid #cdd8db; border-radius: 8px; font: inherit; resize: vertical; }
 .field select, .field input { min-width: 0; width: 100%; }
-.field select:disabled { background: #f1f5f5; color: var(--muted); cursor: not-allowed; }
+.field select:disabled, .field input:disabled { background: #f1f5f5; color: var(--muted); cursor: not-allowed; }
+
 /* ---- Checkbox fields (schedule track options) ---- */
 .checkbox-field { display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 13px; cursor: pointer; }
 .checkbox-field + .checkbox-field { margin-top: 8px; }
@@ -177,7 +192,12 @@ select:focus, input:focus, button:focus-visible { outline: 3px solid rgba(15,118
   cursor: pointer;
 }
 .checkbox-field span { color: var(--text); }
+
+/* ---- Inline hint text inside a modal body ---- */
+.hint { margin: 10px 0 0; color: var(--muted); font-size: 12px; }
+
 .modal-footer { padding: 16px 20px; display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid var(--line); }
+
 /* ---- Responsive ---- */
 @media (max-width: 1000px) {
   .metric-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
