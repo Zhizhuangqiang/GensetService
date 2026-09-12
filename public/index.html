@@ -665,24 +665,28 @@
                 </select>
               </div>
               <div class="field">
-                <label for="schedIntervalDays">Interval (days) <em>*</em></label>
-                <input id="schedIntervalDays" type="number" min="1" step="1" required placeholder="e.g. 365" />
+                <label for="schedIntervalDays">Interval (days)</label>
+                <input id="schedIntervalDays" type="number" min="1" step="1" placeholder="e.g. 365" value="180" />
               </div>
               <div class="field">
                 <label for="schedIntervalHours">Interval (running hours)</label>
-                <input id="schedIntervalHours" type="number" min="1" step="1" placeholder="e.g. 500" />
+                <input id="schedIntervalHours" type="number" min="1" step="1" placeholder="e.g. 500" value="250" />
               </div>
               <div class="field">
                 <label for="schedWarning">Warning (days)</label>
-                <input id="schedWarning" type="number" min="0" step="1" value="30" />
+                <input id="schedWarning" type="number" min="0" step="1" value="14" />
               </div>
               <div class="field">
+                <label for="schedWarningHours">Warning (running hours)</label>
+                <input id="schedWarningHours" type="number" min="0" step="1" value="120" />
+              </div>
+              <div class="field full">
                 <label class="checkbox-field">
                   <input id="schedTrackDays" type="checkbox" checked />
                   <span>Track days</span>
                 </label>
                 <label class="checkbox-field">
-                  <input id="schedTrackHours" type="checkbox" />
+                  <input id="schedTrackHours" type="checkbox" checked />
                   <span>Track running hours</span>
                 </label>
               </div>

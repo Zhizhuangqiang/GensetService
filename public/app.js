@@ -715,7 +715,7 @@ async function loadSchedulesView() {
   renderSystemsTable(
     "Active Schedules",
     "Package maintenance schedules",
-    `<tr><th>ID</th><th>Project</th><th>Package</th><th>Service Item</th><th>Start Date</th><th>Interval (days)</th><th>Interval (hours)</th><th>Warning (days)</th><th>Track Days</th><th>Track Hours</th><th>Active</th></tr>`,
+    `<tr><th>ID</th><th>Project</th><th>Package</th><th>Service Item</th><th>Start Date</th><th>Interval (days)</th><th>Interval (hours)</th><th>Warning (days)</th><th>Warning (hours)</th><th>Track Days</th><th>Track Hours</th><th>Active</th></tr>`,
     schedules
       .map(
         (s) => `
@@ -728,6 +728,7 @@ async function loadSchedulesView() {
         <td>${s.interval_days == null ? "–" : formatNumber(s.interval_days)}</td>
         <td>${s.interval_running_hours == null ? "–" : formatNumber(s.interval_running_hours)}</td>
         <td>${s.warning_days == null ? "–" : formatNumber(s.warning_days)}</td>
+        <td>${s.warning_hours == null ? "–" : formatNumber(s.warning_hours)}</td>
         <td>${trackFlag(s.track_days)}</td>
         <td>${trackFlag(s.track_running_hours)}</td>
         <td>${s.active ? "Yes" : "No"}</td>
@@ -1075,11 +1076,14 @@ const scheduleCache = { packages: [] };
 
 async function openScheduleModal() {
   scheduleForm.reset();
-  $("#schedWarning").value = 30;
+  $("#schedIntervalDays").value = 180;
+  $("#schedIntervalHours").value = 250;
+  $("#schedWarning").value = 14;
+  $("#schedWarningHours").value = 120;
   const trackDays = $("#schedTrackDays");
   const trackHours = $("#schedTrackHours");
   if (trackDays) trackDays.checked = true;
-  if (trackHours) trackHours.checked = false;
+  if (trackHours) trackHours.checked = true;
   $("#schedStartDate").value = new Date().toISOString().slice(0, 10);
   const packageSelect = $("#schedPackage");
   packageSelect.innerHTML = '<option value="">Select project first</option>';
@@ -1116,15 +1120,18 @@ async function onScheduleProjectChange() {
 async function submitSchedule(event) {
   event.preventDefault();
   const saveButton = $("#scheduleSave");
+  const intervalDaysRaw = $("#schedIntervalDays").value;
   const intervalHoursRaw = $("#schedIntervalHours") ? $("#schedIntervalHours").value : "";
+  const warningHoursRaw = $("#schedWarningHours") ? $("#schedWarningHours").value : "";
   const payload = {
     package_id: Number($("#schedPackage").value),
     service_item_id: Number($("#schedServiceItem").value),
-    interval_days: Number($("#schedIntervalDays").value),
+    interval_days: intervalDaysRaw === "" ? null : Number(intervalDaysRaw),
     interval_running_hours: intervalHoursRaw === "" ? null : Number(intervalHoursRaw),
-    warning_days: $("#schedWarning").value === "" ? 30 : Number($("#schedWarning").value),
+    warning_days: $("#schedWarning").value === "" ? 14 : Number($("#schedWarning").value),
+    warning_hours: warningHoursRaw === "" ? 120 : Number(warningHoursRaw),
     track_days: $("#schedTrackDays") ? $("#schedTrackDays").checked : true,
-    track_running_hours: $("#schedTrackHours") ? $("#schedTrackHours").checked : false,
+    track_running_hours: $("#schedTrackHours") ? $("#schedTrackHours").checked : true,
     schedule_start_date: $("#schedStartDate").value,
     notes: $("#schedNotes").value.trim() || null
   };
@@ -1132,16 +1139,20 @@ async function submitSchedule(event) {
     showAlert("Project, package and service item are required.");
     return;
   }
-  if (!payload.interval_days || payload.interval_days <= 0) {
-    showAlert("Interval (days) must be a positive number.");
+  if (payload.interval_days != null && payload.interval_days <= 0) {
+    showAlert("Interval (days) must be a positive number when provided.");
     return;
   }
   if (payload.interval_running_hours != null && payload.interval_running_hours <= 0) {
     showAlert("Interval (running hours) must be a positive number when provided.");
     return;
   }
-  if (payload.warning_days > payload.interval_days) {
+  if (payload.interval_days != null && payload.warning_days > payload.interval_days) {
     showAlert("Warning days cannot exceed the interval (days).");
+    return;
+  }
+  if (payload.interval_running_hours != null && payload.warning_hours > payload.interval_running_hours) {
+    showAlert("Warning (running hours) cannot exceed the interval (running hours).");
     return;
   }
   if (!payload.schedule_start_date) {

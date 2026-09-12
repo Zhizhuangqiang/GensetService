@@ -73,6 +73,7 @@ router.get("/", async (req, res, next) => {
         ss.interval_days,
         ss.interval_running_hours,
         ss.warning_days,
+        ss.warning_hours,
         ss.track_days,
         ss.track_running_hours,
         ss.notes,
@@ -138,14 +139,18 @@ router.get("/:id", async (req, res, next) => {
 function buildScheduleData(body) {
   const package_id = Number.parseInt(body.package_id, 10);
   const service_item_id = Number.parseInt(body.service_item_id, 10);
-  const interval_days = Number.parseInt(body.interval_days, 10);
+  const interval_days = optionalInt(body.interval_days);
   const interval_running_hours = optionalInt(body.interval_running_hours);
   const warning_days =
     body.warning_days === undefined || body.warning_days === null || body.warning_days === ""
-      ? 30
+      ? 14
       : Number.parseInt(body.warning_days, 10);
+  const warning_hours =
+    body.warning_hours === undefined || body.warning_hours === null || body.warning_hours === ""
+      ? 120
+      : Number.parseInt(body.warning_hours, 10);
   const track_days = toBool(body.track_days, true);
-  const track_running_hours = toBool(body.track_running_hours, false);
+  const track_running_hours = toBool(body.track_running_hours, true);
   const schedule_start_date = body.schedule_start_date;
   const notes = body.notes ? String(body.notes).trim() : null;
 
@@ -155,8 +160,8 @@ function buildScheduleData(body) {
   if (!Number.isInteger(service_item_id) || service_item_id <= 0) {
     return { error: "service_item_id is required" };
   }
-  if (!Number.isInteger(interval_days) || interval_days <= 0) {
-    return { error: "interval_days must be a positive number" };
+  if (Number.isNaN(interval_days) || (interval_days !== null && interval_days <= 0)) {
+    return { error: "interval_days must be a positive number when provided" };
   }
   if (Number.isNaN(interval_running_hours) || (interval_running_hours !== null && interval_running_hours <= 0)) {
     return { error: "interval_running_hours must be a positive number when provided" };
@@ -164,8 +169,14 @@ function buildScheduleData(body) {
   if (!Number.isInteger(warning_days) || warning_days < 0) {
     return { error: "warning_days must be zero or greater" };
   }
-  if (warning_days > interval_days) {
+  if (!Number.isInteger(warning_hours) || warning_hours < 0) {
+    return { error: "warning_hours must be zero or greater" };
+  }
+  if (interval_days !== null && warning_days > interval_days) {
     return { error: "warning_days cannot exceed interval_days" };
+  }
+  if (interval_running_hours !== null && warning_hours > interval_running_hours) {
+    return { error: "warning_hours cannot exceed interval_running_hours" };
   }
   if (!schedule_start_date) {
     return { error: "schedule_start_date is required" };
@@ -174,7 +185,7 @@ function buildScheduleData(body) {
   return {
     data: {
       package_id, service_item_id, interval_days, interval_running_hours,
-      warning_days, track_days, track_running_hours, schedule_start_date, notes
+      warning_days, warning_hours, track_days, track_running_hours, schedule_start_date, notes
     }
   };
 }
@@ -198,14 +209,15 @@ router.post("/", async (req, res, next) => {
       `
       INSERT INTO public.service_schedules
         (package_id, service_item_id, interval_days, interval_running_hours,
-         warning_days, track_days, track_running_hours,
+         warning_days, warning_hours, track_days, track_running_hours,
          schedule_start_date, notes, active)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, TRUE)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, TRUE)
       RETURNING *
       `,
       [
         d.package_id, d.service_item_id, d.interval_days, d.interval_running_hours,
-        d.warning_days, d.track_days, d.track_running_hours, d.schedule_start_date, d.notes
+        d.warning_days, d.warning_hours, d.track_days, d.track_running_hours,
+        d.schedule_start_date, d.notes
       ]
     );
     res.status(201).json(result.rows[0]);
@@ -239,19 +251,20 @@ router.put("/:id", async (req, res, next) => {
         interval_days = $3,
         interval_running_hours = $4,
         warning_days = $5,
-        track_days = $6,
-        track_running_hours = $7,
-        schedule_start_date = $8,
-        notes = $9,
-        active = $10,
+        warning_hours = $6,
+        track_days = $7,
+        track_running_hours = $8,
+        schedule_start_date = $9,
+        notes = $10,
+        active = $11,
         updated_at = CURRENT_TIMESTAMP
-      WHERE id = $11
+      WHERE id = $12
       RETURNING *
       `,
       [
         d.package_id, d.service_item_id, d.interval_days, d.interval_running_hours,
-        d.warning_days, d.track_days, d.track_running_hours, d.schedule_start_date, d.notes,
-        active !== false, id
+        d.warning_days, d.warning_hours, d.track_days, d.track_running_hours,
+        d.schedule_start_date, d.notes, active !== false, id
       ]
     );
     if (result.rowCount === 0) {
