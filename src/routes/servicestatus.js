@@ -6,11 +6,10 @@ const router = express.Router();
  * GET /api/servicestatus
  * Optional: ?status=OVERDUE | DUE_SOON | OK | NOT_SET
  *
- * Reads from public.v_service_status (rebuilt on package_id/packages).
- * The view's status column is service_status (OVERDUE, DUE_SOON, OK,
- * NO_BASELINE_DATE, NO_PERIOD, INACTIVE). Non-actionable values are
- * mapped to NOT_SET and exposed as "status" so the frontend keeps
- * working unchanged.
+ * Reads from public.v_service_status (rebuilt with hour-based warning
+ * support: day_status + hour_status combine into service_status).
+ * Non-actionable values are mapped to NOT_SET and exposed as "status"
+ * so the frontend keeps working unchanged.
  */
 router.get("/", async (req, res, next) => {
   try {
@@ -46,11 +45,20 @@ router.get("/", async (req, res, next) => {
           interval_days,
           interval_running_hours,
           warning_days,
+          warning_hours,
           track_days,
           track_running_hours,
           last_service_date,
           next_due_date,
           days_remaining,
+          baseline_reading_date,
+          baseline_running_hours,
+          current_reading_date,
+          current_running_hours,
+          hours_used,
+          hours_remaining,
+          day_status,
+          hour_status,
           CASE
             WHEN service_status IN ('OVERDUE', 'DUE_SOON', 'OK')
               THEN service_status

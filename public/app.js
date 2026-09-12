@@ -377,7 +377,8 @@ function renderStatusTable() {
       <td>${formatDate(item.last_service_date)}</td>
       <td>${formatDate(item.next_due_date)}</td>
       <td>${item.days_remaining == null ? "–" : formatNumber(item.days_remaining)}</td>
-      <td>${formatNumber(item.interval_days)} days${
+      <td>${hoursRemainingCell(item)}</td>
+      <td>${item.interval_days == null ? "–" : formatNumber(item.interval_days) + " days"}${
         item.track_running_hours && item.interval_running_hours
           ? `<br><small>${formatNumber(item.interval_running_hours)} hrs</small>`
           : ""
@@ -388,6 +389,21 @@ function renderStatusTable() {
     .join("");
   empty.classList.toggle("hidden", items.length > 0);
   $("#statusCount").textContent = `${items.length} schedule${items.length === 1 ? "" : "s"}`;
+}
+
+/* Renders the "Hours" column cell for the Service Status table. Shows
+ * hours remaining until the next hour-based service is due (negative
+ * values mean overdue-by-that-much), with the used/interval hours as a
+ * small subtext. Falls back to a dash when the schedule doesn't track
+ * running hours or there isn't enough pv_log data yet to compute it. */
+function hoursRemainingCell(item) {
+  if (!item.track_running_hours || item.interval_running_hours == null) return "–";
+  if (item.hours_remaining == null) return `<small>No hours data</small>`;
+  const usedText =
+    item.hours_used != null ? `${formatNumber(Math.round(item.hours_used))} used` : "";
+  return `${formatNumber(Math.round(item.hours_remaining))}${
+    usedText ? `<br><small>${usedText}</small>` : ""
+  }`;
 }
 
 /* ---------------- Recent Service: rows, filters, sort ---------------- */
