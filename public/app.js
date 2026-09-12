@@ -15,14 +15,14 @@ const ENDPOINTS = {
   serviceRecords: "/api/servicerecords",
   pvDataTypes: "/api/pvdatatypes",
   pvAttributes: "/api/pvattributes",
-  pvLog: "/api/pvlog",
-  technicians: "/api/technicians"
+  pvLog: "/api/pvlog"
 };
 
 const state = {
   dashboard: null,
   statuses: [],
   recent: [],
+  readings: [],
   currentView: "dashboard",
   currentSystem: "projects",
   loading: false,
@@ -30,6 +30,12 @@ const state = {
     projectId: "",
     packageId: "",
     serviceItemId: "",
+    sort: "date_desc"
+  },
+  readingsFilters: {
+    projectId: "",
+    packageId: "",
+    attributeId: "",
     sort: "date_desc"
   }
 };
@@ -56,6 +62,10 @@ const elements = {
   recentPackageFilter: $("#recentPackageFilter"),
   recentServiceItemFilter: $("#recentServiceItemFilter"),
   recentSort: $("#recentSort"),
+  readingsProjectFilter: $("#readingsProjectFilter"),
+  readingsPackageFilter: $("#readingsPackageFilter"),
+  readingsAttributeFilter: $("#readingsAttributeFilter"),
+  readingsSort: $("#readingsSort"),
   systemSelect: $("#systemSelect")
 };
 
@@ -63,7 +73,8 @@ const viewMetadata = {
   dashboard: ["Dashboard", "Package maintenance overview"],
   maintenance: ["Service Status", "Current maintenance condition for every active schedule"],
   recent: ["Recent Service", "Completed package maintenance records"],
-  systems: ["Systems", "Projects, packages, service items, schedules, process values and technicians"]
+  readings: ["Readings", "Logged process value readings"],
+  systems: ["Systems", "Projects, packages, service items, schedules and process values"]
 };
 
 /* ---------------- Helpers ---------------- */
@@ -146,21 +157,6 @@ function formatPvValue(value, dataTypeName, unit) {
     return unit ? `${formatNumber(value)} ${escapeHtml(unit)}` : formatNumber(value);
   }
   return escapeHtml(String(value));
-}
-
-/* Renders "Name" or "Name · Company" for a technician reference on a
- * record/reading row. Falls back to a dash when no technician is set. */
-function technicianCell(name, company) {
-  if (!name) return "–";
-  return company
-    ? `${escapeHtml(name)}<br><small>${escapeHtml(company)}</small>`
-    : escapeHtml(name);
-}
-
-/* Label used inside <option> elements: "Name — Company" when a company
- * is on file, otherwise just "Name". */
-function technicianOptionLabel(t) {
-  return t.company_name ? `${t.name} — ${t.company_name}` : t.name;
 }
 
 /* Builds a sorted list of unique {id, name} options from a set of items,
@@ -256,19 +252,6 @@ async function fillPackagesForProject(projectId, selectId) {
       .join("");
   select.disabled = false;
   return packages;
-}
-
-/* Populate a <select> with active technicians, shown as "Name — Company".
- * Always includes a blank "no technician" option since technician_id is
- * optional on both service records and readings. */
-async function fillTechnicianSelect(selectId) {
-  const technicians = itemsOf(await apiFetch(ENDPOINTS.technicians + "?active=true"));
-  $(selectId).innerHTML =
-    '<option value="">Select technician</option>' +
-    technicians
-      .map((t) => `<option value="${t.id}">${escapeHtml(technicianOptionLabel(t))}</option>`)
-      .join("");
-  return technicians;
 }
 
 /* ---------------- UI state ---------------- */
@@ -417,7 +400,7 @@ function recentRows(items) {
       <td>${escapeHtml(item.project_name)}</td>
       <td>${packageCell(item.package_name, item.package_type_name, item.package_tag)}</td>
       <td>${escapeHtml(item.service_item_name)}</td>
-      <td>${technicianCell(item.technician_name, item.technician_company)}</td>
+      <td>${escapeHtml(item.performed_by || "–")}</td>
       <td>${escapeHtml(item.work_order_number || "–")}</td>
       <td>${formatNumber(item.attachment_count)}</td>
     </tr>
@@ -439,7 +422,7 @@ function renderDashboardRecent() {
       <td>${escapeHtml(item.project_name)}</td>
       <td>${packageCell(item.package_name, item.package_type_name, item.package_tag)}</td>
       <td>${escapeHtml(item.service_item_name)}</td>
-      <td>${technicianCell(item.technician_name, item.technician_company)}</td>
+      <td>${escapeHtml(item.performed_by || "–")}</td>
       <td>${escapeHtml(item.work_order_number || "–")}</td>
     </tr>
   `
@@ -510,25 +493,87 @@ async function loadRecent() {
   applyRecentFilters();
 }
 
-async function loadReadingsCount() {
-  try {
-    const data = await apiFetch(ENDPOINTS.pvLog);
-    const el = $("#readingsCount");
-    if (el) el.textContent = formatNumber(data.count ?? itemsOf(data).length);
-  } catch (error) {
-    // Non-fatal for the dashboard; leave the count as-is.
-    console.warn("Readings count unavailable", error);
-  }
+/* ---------------- Readings: rows, filters, sort ---------------- */
+function readingRows(items) {
+  return items
+    .map(
+      (item) => `
+    <tr>
+      <td>${formatDate(item.reading_date)}</td>
+      <td>${escapeHtml(item.project_name)}</td>
+      <td>${packageCell(item.package_name, null, item.package_tag)}</td>
+      <td>${escapeHtml(item.attribute_name ?? "–")}</td>
+      <td>${formatPvValue(item.value, item.data_type_name, item.unit)}</td>
+      <td>${formatDateTime(item.created_at)}</td>
+    </tr>
+  `
+    )
+    .join("");
 }
 
-async function loadTechniciansCount() {
-  try {
-    const data = await apiFetch(ENDPOINTS.technicians);
-    const el = $("#techniciansCount");
-    if (el) el.textContent = formatNumber(data.count ?? itemsOf(data).length);
-  } catch (error) {
-    console.warn("Technicians count unavailable", error);
-  }
+/* Rebuilds the Project / Package / Process Value filter dropdowns from
+ * whatever readings are currently loaded, preserving the user's current
+ * selections where still valid. */
+function populateReadingsFilterOptions() {
+  refreshFilterOptions(
+    elements.readingsProjectFilter,
+    "All projects",
+    uniqueOptions(state.readings, "project_id", "project_name")
+  );
+  refreshFilterOptions(
+    elements.readingsPackageFilter,
+    "All packages",
+    uniqueOptions(state.readings, "package_id", "package_name")
+  );
+  refreshFilterOptions(
+    elements.readingsAttributeFilter,
+    "All process values",
+    uniqueOptions(state.readings, "pv_attribute_id", "attribute_name")
+  );
+}
+
+/* Applies the Project / Package / Process Value filters and the date
+ * sort order to the loaded batch, then renders the Readings table.
+ * This never re-fetches — it only re-slices/sorts state.readings. */
+function applyReadingsFilters() {
+  const projectId = elements.readingsProjectFilter.value;
+  const packageId = elements.readingsPackageFilter.value;
+  const attributeId = elements.readingsAttributeFilter.value;
+  const sort = elements.readingsSort.value;
+
+  state.readingsFilters = { projectId, packageId, attributeId, sort };
+
+  let items = state.readings.filter((item) => {
+    if (projectId && String(item.project_id) !== projectId) return false;
+    if (packageId && String(item.package_id) !== packageId) return false;
+    if (attributeId && String(item.pv_attribute_id) !== attributeId) return false;
+    return true;
+  });
+
+  items = items.slice().sort((a, b) => {
+    const dateA = a.reading_date ?? "";
+    const dateB = b.reading_date ?? "";
+    return sort === "date_asc" ? dateA.localeCompare(dateB) : dateB.localeCompare(dateA);
+  });
+
+  $("#readingsTableBody").innerHTML = readingRows(items);
+  $("#readingsEmpty").classList.toggle("hidden", items.length > 0);
+  $("#readingsListCount").textContent = `${items.length} of ${state.readings.length} reading${
+    state.readings.length === 1 ? "" : "s"
+  }`;
+}
+
+/* Loads the full readings batch once, updates the dashboard overview
+ * count, populates the filter dropdowns and renders the Readings page
+ * table. Called from loadAll() so the Readings page is instantly
+ * populated whenever the user navigates to it (no extra fetch needed). */
+async function loadReadings() {
+  const data = await apiFetch(ENDPOINTS.pvLog);
+  state.readings = itemsOf(data);
+  const el = $("#readingsCount");
+  if (el) el.textContent = formatNumber(data.count ?? state.readings.length);
+  populateReadingsFilterOptions();
+  applyReadingsFilters();
 }
 
 async function loadAll({ notify = false } = {}) {
@@ -545,11 +590,10 @@ async function loadAll({ notify = false } = {}) {
     state.dashboard = dashboard;
     state.statuses = itemsOf(statusData);
     await loadRecent();
+    await loadReadings();
     renderDashboard(dashboard);
     renderNextDue();
     renderStatusTable();
-    loadReadingsCount();
-    loadTechniciansCount();
     setConnection(true);
     elements.lastUpdated.textContent = `Updated ${new Intl.DateTimeFormat(undefined, {
       hour: "2-digit",
@@ -716,62 +760,13 @@ async function loadPvAttributesView() {
   );
 }
 
-async function loadReadingsView() {
-  const readings = itemsOf(await apiFetch(ENDPOINTS.pvLog));
-  renderSystemsTable(
-    "Readings",
-    "Logged process value readings",
-    `<tr><th>ID</th><th>Project</th><th>Package</th><th>Process Value</th><th>Value</th><th>Reading Date</th><th>Technician</th><th>Recorded</th></tr>`,
-    readings
-      .map(
-        (r) => `
-      <tr>
-        <td>${escapeHtml(r.id)}</td>
-        <td>${escapeHtml(r.project_name ?? "–")}</td>
-        <td>${packageCell(r.package_name, null, r.package_tag)}</td>
-        <td>${escapeHtml(r.attribute_name ?? "–")}</td>
-        <td>${formatPvValue(r.value, r.data_type_name, r.unit)}</td>
-        <td>${formatDate(r.reading_date)}</td>
-        <td>${technicianCell(r.technician_name, r.technician_company)}</td>
-        <td>${formatDateTime(r.created_at)}</td>
-      </tr>`
-      )
-      .join("")
-  );
-}
-
-async function loadTechniciansView() {
-  const technicians = itemsOf(await apiFetch(ENDPOINTS.technicians));
-  renderSystemsTable(
-    "Technicians",
-    "People who perform service work and record readings",
-    `<tr><th>ID</th><th>Name</th><th>Title</th><th>Company</th><th>Phone</th><th>Email</th><th>Active</th></tr>`,
-    technicians
-      .map(
-        (t) => `
-      <tr>
-        <td>${escapeHtml(t.id)}</td>
-        <td>${escapeHtml(t.name)}</td>
-        <td>${escapeHtml(t.title ?? "–")}</td>
-        <td>${escapeHtml(t.company_name ?? "–")}</td>
-        <td>${escapeHtml(t.phone ?? "–")}</td>
-        <td>${escapeHtml(t.email ?? "–")}</td>
-        <td>${t.active ? "Yes" : "No"}</td>
-      </tr>`
-      )
-      .join("")
-  );
-}
-
 const systemLoaders = {
   projects: loadProjectsView,
   packages: loadPackagesView,
   packagetypes: loadPackageTypesView,
   serviceitems: loadServiceItemsView,
   schedules: loadSchedulesView,
-  pvattributes: loadPvAttributesView,
-  readings: loadReadingsView,
-  technicians: loadTechniciansView
+  pvattributes: loadPvAttributesView
 };
 
 async function showSystem(systemKey) {
@@ -805,10 +800,7 @@ async function openRecordModal() {
   scheduleSelect.innerHTML = '<option value="">Select package first</option>';
   scheduleSelect.disabled = true;
   try {
-    await Promise.all([
-      fillProjectSelect("#recProject"),
-      fillTechnicianSelect("#recTechnician")
-    ]);
+    await fillProjectSelect("#recProject");
     recordModal.classList.remove("hidden");
   } catch (error) {
     showAlert(`Unable to open the record form: ${error.message}`);
@@ -878,11 +870,10 @@ async function submitRecord(event) {
     showAlert("Service date is required.");
     return;
   }
-  const technicianValue = $("#recTechnician").value;
   const payload = {
     service_schedule_id: scheduleId,
     service_date: serviceDate,
-    technician_id: technicianValue ? Number(technicianValue) : null,
+    performed_by: $("#recPerformedBy").value.trim() || null,
     work_order_number: $("#recWorkOrder").value.trim() || null,
     remarks: $("#recRemarks").value.trim() || null
   };
@@ -1248,10 +1239,7 @@ async function openReadingModal() {
   attributeSelect.disabled = true;
   resetReadingValueField();
   try {
-    await Promise.all([
-      fillProjectSelect("#rdProject"),
-      fillTechnicianSelect("#rdTechnician")
-    ]);
+    await fillProjectSelect("#rdProject");
     readingModal.classList.remove("hidden");
   } catch (error) {
     showAlert(`Unable to open the reading form: ${error.message}`);
@@ -1400,13 +1388,12 @@ async function submitReading(event) {
     value = rawValue;
   }
 
-  const technicianValue = $("#rdTechnician").value;
   const payload = {
     package_id: packageId,
     pv_attribute_id: attributeId,
     value,
     reading_date: readingDate,
-    technician_id: technicianValue ? Number(technicianValue) : null,
+    performed_by: $("#rdPerformedBy").value.trim() || null,
     notes: $("#rdNotes").value.trim() || null
   };
 
@@ -1416,8 +1403,7 @@ async function submitReading(event) {
     await apiPost(ENDPOINTS.pvLog, payload);
     closeReadingModal();
     showToast("Reading added");
-    await loadReadingsView();
-    await loadReadingsCount();
+    await loadReadings();
   } catch (error) {
     showAlert(`Unable to save reading: ${error.message}`);
   } finally {
@@ -1426,53 +1412,10 @@ async function submitReading(event) {
   }
 }
 
-/* ---------------- Add Technician ---------------- */
-const technicianModal = $("#technicianModal");
-const technicianForm = $("#technicianForm");
-
-function openTechnicianModal() {
-  technicianForm.reset();
-  technicianModal.classList.remove("hidden");
-  $("#techName").focus();
-}
-
-function closeTechnicianModal() {
-  technicianModal.classList.add("hidden");
-}
-
-async function submitTechnician(event) {
-  event.preventDefault();
-  const saveButton = $("#technicianSave");
-  const payload = {
-    name: $("#techName").value.trim(),
-    title: $("#techTitle").value.trim() || null,
-    company_name: $("#techCompany").value.trim() || null,
-    phone: $("#techPhone").value.trim() || null,
-    email: $("#techEmail").value.trim() || null,
-    notes: $("#techNotes").value.trim() || null
-  };
-  if (!payload.name) {
-    showAlert("Technician name is required.");
-    return;
-  }
-  saveButton.disabled = true;
-  saveButton.textContent = "Saving...";
-  try {
-    await apiPost(ENDPOINTS.technicians, payload);
-    closeTechnicianModal();
-    showToast("Technician added");
-    await loadTechniciansView();
-    await loadTechniciansCount();
-  } catch (error) {
-    showAlert(`Unable to save technician: ${error.message}`);
-  } finally {
-    saveButton.disabled = false;
-    saveButton.textContent = "Save technician";
-  }
-}
-
-/* ---------------- Add button dispatcher ---------------- */
+/* ---------------- Add button dispatcher (Systems categories only) ---------------- */
 // Packages uses its own separate button (#addPackageButton), toggled in showSystem.
+// Readings has its own dedicated page + #addReadingButton, so it is not part of
+// this Systems "+ Add" dispatcher.
 function updateAddButton(systemKey) {
   const btn = $("#addSystemButton");
   if (!btn) return;
@@ -1481,9 +1424,7 @@ function updateAddButton(systemKey) {
     packagetypes: { label: "+ Add Package Type", open: openPackageTypeModal },
     serviceitems: { label: "+ Add Service Item", open: openServiceItemModal },
     schedules: { label: "+ Add Schedule", open: openScheduleModal },
-    pvattributes: { label: "+ Add Process Value", open: openPvAttributeModal },
-    readings: { label: "+ Add Reading", open: openReadingModal },
-    technicians: { label: "+ Add Technician", open: openTechnicianModal }
+    pvattributes: { label: "+ Add Process Value", open: openPvAttributeModal }
   };
   const cfg = map[systemKey];
   if (cfg) {
@@ -1541,6 +1482,13 @@ function bindEvents() {
   elements.recentPackageFilter.addEventListener("change", applyRecentFilters);
   elements.recentServiceItemFilter.addEventListener("change", applyRecentFilters);
   elements.recentSort.addEventListener("change", applyRecentFilters);
+
+  // Readings page: dedicated Add button + filters/sort (client-side, no re-fetch)
+  $("#addReadingButton").addEventListener("click", openReadingModal);
+  elements.readingsProjectFilter.addEventListener("change", applyReadingsFilters);
+  elements.readingsPackageFilter.addEventListener("change", applyReadingsFilters);
+  elements.readingsAttributeFilter.addEventListener("change", applyReadingsFilters);
+  elements.readingsSort.addEventListener("change", applyReadingsFilters);
 
   elements.refreshButton.addEventListener("click", () => loadAll({ notify: true }));
 
@@ -1615,14 +1563,6 @@ function bindEvents() {
   $("#rdProject").addEventListener("change", onReadingProjectChange);
   $("#rdPackage").addEventListener("change", onReadingPackageChange);
   $("#rdAttribute").addEventListener("change", onReadingAttributeChange);
-
-  // Add Technician modal
-  $("#technicianModalClose").addEventListener("click", closeTechnicianModal);
-  $("#technicianCancel").addEventListener("click", closeTechnicianModal);
-  technicianForm.addEventListener("submit", submitTechnician);
-  technicianModal.addEventListener("click", (event) => {
-    if (event.target === technicianModal) closeTechnicianModal();
-  });
 
   elements.menuButton.addEventListener("click", () =>
     elements.sidebar.classList.contains("open") ? closeSidebar() : openSidebar()

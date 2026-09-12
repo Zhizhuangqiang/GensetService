@@ -34,6 +34,9 @@
           <button class="nav-item" data-view="recent" type="button">
             <span aria-hidden="true">↻</span> Recent Service
           </button>
+          <button class="nav-item" data-view="readings" type="button">
+            <span aria-hidden="true">⏱</span> Readings
+          </button>
           <button class="nav-item" data-view="systems" type="button">
             <span aria-hidden="true">⚙</span> Systems
           </button>
@@ -115,13 +118,9 @@
                     <span>Active Schedules</span>
                     <strong id="activeSchedules">0</strong>
                   </button>
-                  <button class="overview-link" data-system-view="readings" type="button">
+                  <button class="overview-link" data-go-view="readings" type="button">
                     <span>Readings</span>
                     <strong id="readingsCount">0</strong>
-                  </button>
-                  <button class="overview-link" data-system-view="technicians" type="button">
-                    <span>Technicians</span>
-                    <strong id="techniciansCount">0</strong>
                   </button>
                   <div class="overview-static">
                     <span>Service Records</span>
@@ -166,7 +165,7 @@
                       <th>Project</th>
                       <th>Package</th>
                       <th>Service Item</th>
-                      <th>Technician</th>
+                      <th>Performed By</th>
                       <th>Work Order</th>
                     </tr>
                   </thead>
@@ -293,7 +292,7 @@
                       <th>Project</th>
                       <th>Package</th>
                       <th>Service Item</th>
-                      <th>Technician</th>
+                      <th>Performed By</th>
                       <th>Work Order</th>
                       <th>Attachments</th>
                     </tr>
@@ -306,6 +305,73 @@
               </div>
               <div class="table-footer">
                 <span id="recentCount">0 records</span>
+              </div>
+            </section>
+          </section>
+
+          <section class="view hidden" id="readingsView" data-view-panel="readings">
+            <section class="panel">
+              <div class="panel-header stack-mobile">
+                <div>
+                  <h2>Readings</h2>
+                  <p>Logged process value readings</p>
+                </div>
+                <div class="panel-actions">
+                  <button class="button" id="addReadingButton" type="button">
+                    + Add Reading
+                  </button>
+                </div>
+              </div>
+
+              <!-- Client-side filters + sort, applied against the currently loaded batch -->
+              <div class="filter-row" id="readingsFilterRow">
+                <label>
+                  <span>Project</span>
+                  <select id="readingsProjectFilter">
+                    <option value="">All projects</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Package</span>
+                  <select id="readingsPackageFilter">
+                    <option value="">All packages</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Process Value</span>
+                  <select id="readingsAttributeFilter">
+                    <option value="">All process values</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Sort by date</span>
+                  <select id="readingsSort">
+                    <option value="date_desc" selected>Newest first</option>
+                    <option value="date_asc">Oldest first</option>
+                  </select>
+                </label>
+              </div>
+
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Reading Date</th>
+                      <th>Project</th>
+                      <th>Package</th>
+                      <th>Process Value</th>
+                      <th>Value</th>
+                      <th>Recorded</th>
+                    </tr>
+                  </thead>
+                  <tbody id="readingsTableBody"></tbody>
+                </table>
+              </div>
+              <div class="empty-state hidden" id="readingsEmpty">
+                No readings recorded yet.
+              </div>
+              <div class="table-footer">
+                <span id="readingsListCount">0 readings</span>
               </div>
             </section>
           </section>
@@ -333,8 +399,6 @@
                       <option value="serviceitems">Service Items</option>
                       <option value="schedules">Active Schedules</option>
                       <option value="pvattributes">Process Values</option>
-                      <option value="readings">Readings</option>
-                      <option value="technicians">Technicians</option>
                     </select>
                   </label>
                 </div>
@@ -354,7 +418,6 @@
       </div>
     </div>
     <div class="sidebar-backdrop hidden" id="sidebarBackdrop"></div>
-
     <!-- Add Service Record modal -->
     <div
       class="modal-backdrop hidden"
@@ -396,10 +459,8 @@
                 <input id="recDate" type="date" required />
               </div>
               <div class="field">
-                <label for="recTechnician">Technician</label>
-                <select id="recTechnician">
-                  <option value="">Select technician</option>
-                </select>
+                <label for="recPerformedBy">Performed By</label>
+                <input id="recPerformedBy" type="text" />
               </div>
               <div class="field">
                 <label for="recWorkOrder">Work Order</label>
@@ -418,7 +479,6 @@
         </form>
       </div>
     </div>
-
     <!-- Add Project modal -->
     <div class="modal-backdrop hidden" id="projectModal" role="dialog"
          aria-modal="true" aria-labelledby="projectModalTitle">
@@ -448,7 +508,6 @@
         </form>
       </div>
     </div>
-
     <!-- Add Package modal -->
     <div
       class="modal-backdrop hidden"
@@ -500,7 +559,6 @@
         </form>
       </div>
     </div>
-
     <!-- Add Package Type modal -->
     <div
       class="modal-backdrop hidden"
@@ -535,7 +593,6 @@
         </form>
       </div>
     </div>
-
     <!-- Add Service Item modal -->
     <div
       class="modal-backdrop hidden"
@@ -571,7 +628,6 @@
         </form>
       </div>
     </div>
-
     <!-- Add Schedule modal -->
     <div
       class="modal-backdrop hidden"
@@ -647,7 +703,6 @@
         </form>
       </div>
     </div>
-
     <!-- Add Process Value modal -->
     <div
       class="modal-backdrop hidden"
@@ -699,7 +754,6 @@
         </form>
       </div>
     </div>
-
     <!-- Add Reading modal -->
     <div
       class="modal-backdrop hidden"
@@ -745,10 +799,8 @@
                 <input id="rdReadingDate" type="date" required />
               </div>
               <div class="field">
-                <label for="rdTechnician">Technician</label>
-                <select id="rdTechnician">
-                  <option value="">Select technician</option>
-                </select>
+                <label for="rdPerformedBy">Performed By</label>
+                <input id="rdPerformedBy" type="text" />
               </div>
               <div class="field full">
                 <label for="rdNotes">Notes</label>
@@ -763,59 +815,6 @@
         </form>
       </div>
     </div>
-
-    <!-- Add Technician modal -->
-    <div
-      class="modal-backdrop hidden"
-      id="technicianModal"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="technicianModalTitle"
-    >
-      <div class="modal">
-        <div class="modal-header">
-          <h2 id="technicianModalTitle">Add Technician</h2>
-          <button class="modal-close" id="technicianModalClose" type="button" aria-label="Close">
-            &times;
-          </button>
-        </div>
-        <form id="technicianForm">
-          <div class="modal-body">
-            <div class="form-grid">
-              <div class="field full">
-                <label for="techName">Name <em>*</em></label>
-                <input id="techName" type="text" required placeholder="e.g. Jonny Wiggen" />
-              </div>
-              <div class="field">
-                <label for="techTitle">Title</label>
-                <input id="techTitle" type="text" placeholder="e.g. Field Engineer" />
-              </div>
-              <div class="field">
-                <label for="techCompany">Company</label>
-                <input id="techCompany" type="text" placeholder="e.g. Eureka Group AS" />
-              </div>
-              <div class="field">
-                <label for="techPhone">Phone</label>
-                <input id="techPhone" type="text" />
-              </div>
-              <div class="field">
-                <label for="techEmail">Email</label>
-                <input id="techEmail" type="email" placeholder="name@company.com" />
-              </div>
-              <div class="field full">
-                <label for="techNotes">Notes</label>
-                <textarea id="techNotes" placeholder="Optional notes"></textarea>
-              </div>
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button class="button secondary" type="button" id="technicianCancel">Cancel</button>
-            <button class="button" type="submit" id="technicianSave">Save technician</button>
-          </div>
-        </form>
-      </div>
-    </div>
-
     <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
   </body>
 </html>
