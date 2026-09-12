@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 const path = require("path");
+const crypto = require("crypto");
 const pool = require("./db");
 
 const dashboardRouter        = require("./routes/dashboard");
@@ -15,12 +16,75 @@ const serviceRecordsRouter   = require("./routes/servicerecords");
 const pvDataTypesRouter      = require("./routes/pvdatatypes");
 const pvAttributesRouter     = require("./routes/pvattributes");
 const pvLogRouter            = require("./routes/pvlog");
-const techniciansRouter       = require("./routes/technicians");
+const techniciansRouter      = require("./routes/technicians");
 
 const app = express();
 app.disable("x-powered-by");
 app.use(helmet());
 app.use(express.json({ limit: "1mb" }));
+
+/*
+ * ---------------------------------------------------------------------
+ * Basic Auth gate — restricts the ENTIRE app (static site + all API
+ * routes) behind a single shared username/password.
+ *
+ * Credentials come from environment variables so they are never
+ * committed to source control:
+ *   BASIC_AUTH_USER
+ *   BASIC_AUTH_PASS
+ *
+ * Set these in the Render dashboard under your service's
+ * "Environment" tab, then redeploy.
+ *
+ * If either variable is not set, the app intentionally FAILS CLOSED
+ * (returns 503) rather than silently running without protection —
+ * this prevents accidentally deploying an unprotected instance.
+ * ---------------------------------------------------------------------
+ */
+function timingSafeEqual(a, b) {
+  const bufA = Buffer.from(String(a));
+  const bufB = Buffer.from(String(b));
+  if (bufA.length !== bufB.length) {
+    // Still run a comparison of equal length to avoid leaking length via timing.
+    crypto.timingSafeEqual(bufA, Buffer.alloc(bufA.length));
+    return false;
+  }
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
+function basicAuth(req, res, next) {
+  const expectedUser = process.env.BASIC_AUTH_USER;
+  const expectedPass = process.env.BASIC_AUTH_PASS;
+
+  if (!expectedUser || !expectedPass) {
+    console.error(
+      "BASIC_AUTH_USER / BASIC_AUTH_PASS are not set — refusing to serve requests."
+    );
+    return res.status(503).json({
+      error: "Server misconfigured: authentication credentials are not set."
+    });
+  }
+
+  const header = req.headers.authorization || "";
+  const [scheme, encoded] = header.split(" ");
+
+  if (scheme === "Basic" && encoded) {
+    const decoded = Buffer.from(encoded, "base64").toString("utf8");
+    const separatorIndex = decoded.indexOf(":");
+    if (separatorIndex !== -1) {
+      const user = decoded.slice(0, separatorIndex);
+      const pass = decoded.slice(separatorIndex + 1);
+      if (timingSafeEqual(user, expectedUser) && timingSafeEqual(pass, expectedPass)) {
+        return next();
+      }
+    }
+  }
+
+  res.set("WWW-Authenticate", 'Basic realm="Package Service Manager", charset="UTF-8"');
+  return res.status(401).json({ error: "Authentication required" });
+}
+
+app.use(basicAuth);
 
 const allowlist = (process.env.CORS_ORIGINS || "")
   .split(",")
@@ -71,6 +135,7 @@ app.use("/api/pvdatatypes",    pvDataTypesRouter);
 app.use("/api/pvattributes",   pvAttributesRouter);
 app.use("/api/pvlog",          pvLogRouter);
 app.use("/api/technicians",    techniciansRouter);
+
 app.use((_req, res) => res.status(404).json({ error: "Route not found" }));
 
 app.use((error, _req, res, _next) => {
