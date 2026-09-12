@@ -15,6 +15,7 @@ const serviceRecordsRouter   = require("./routes/servicerecords");
 const pvDataTypesRouter      = require("./routes/pvdatatypes");
 const pvAttributesRouter     = require("./routes/pvattributes");
 const pvLogRouter            = require("./routes/pvlog");
+const techniciansRouter       = require("./routes/technicians");
 
 const app = express();
 app.disable("x-powered-by");
@@ -69,7 +70,7 @@ app.use("/api/servicerecords", serviceRecordsRouter);
 app.use("/api/pvdatatypes",    pvDataTypesRouter);
 app.use("/api/pvattributes",   pvAttributesRouter);
 app.use("/api/pvlog",          pvLogRouter);
-
+app.use("/api/technicians",    techniciansRouter);
 app.use((_req, res) => res.status(404).json({ error: "Route not found" }));
 
 app.use((error, _req, res, _next) => {
