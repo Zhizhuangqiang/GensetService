@@ -163,7 +163,8 @@ router.get("/status-summary", async (_req, res, next) => {
  * GET /api/dashboard/recent?limit=20
  *
  * Most recently completed service records. Project, package and service
- * item are derived through the linked service schedule.
+ * item are derived through the linked service schedule. Technician is
+ * derived through technician_id -> technicians.
  */
 router.get("/recent", async (req, res, next) => {
   try {
@@ -176,7 +177,9 @@ router.get("/recent", async (req, res, next) => {
         sr.id AS service_record_id,
         sr.service_schedule_id,
         sr.service_date,
-        sr.performed_by,
+        sr.technician_id,
+        t.name AS technician_name,
+        t.company_name AS technician_company,
         sr.work_order_number,
         sr.report_reference,
         sr.remarks,
@@ -199,6 +202,7 @@ router.get("/recent", async (req, res, next) => {
       JOIN public.package_types pt     ON pt.id = pkg.package_type_id
       JOIN public.projects p           ON p.id = pkg.project_id
       JOIN public.service_items si     ON si.id = ss.service_item_id
+      LEFT JOIN public.technicians t   ON t.id = sr.technician_id
       ORDER BY sr.service_date DESC, sr.id DESC
       LIMIT $1::int
     `;

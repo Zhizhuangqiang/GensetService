@@ -87,7 +87,9 @@ router.get("/", async (req, res, next) => {
         dt.name AS data_type_name,
         pl.reading_date,
         pl.value,
-        pl.performed_by,
+        pl.technician_id,
+        t.name AS technician_name,
+        t.company_name AS technician_company,
         pl.notes,
         pl.created_at
       FROM public.pv_log pl
@@ -95,6 +97,7 @@ router.get("/", async (req, res, next) => {
       JOIN public.projects proj    ON proj.id = pkg.project_id
       JOIN public.pv_attributes pa ON pa.id = pl.pv_attribute_id
       JOIN public.pv_data_types dt ON dt.id = pa.data_type_id
+      LEFT JOIN public.technicians t ON t.id = pl.technician_id
       ${where}
       ORDER BY pl.reading_date DESC, pl.id DESC
       `,
@@ -122,12 +125,15 @@ router.get("/:id", async (req, res, next) => {
         proj.id AS project_id, proj.name AS project_name,
         pl.pv_attribute_id, pa.name AS attribute_name, pa.unit,
         dt.name AS data_type_name,
-        pl.reading_date, pl.value, pl.performed_by, pl.notes, pl.created_at
+        pl.reading_date, pl.value,
+        pl.technician_id, t.name AS technician_name, t.company_name AS technician_company,
+        pl.notes, pl.created_at
       FROM public.pv_log pl
       JOIN public.packages pkg     ON pkg.id = pl.package_id
       JOIN public.projects proj    ON proj.id = pkg.project_id
       JOIN public.pv_attributes pa ON pa.id = pl.pv_attribute_id
       JOIN public.pv_data_types dt ON dt.id = pa.data_type_id
+      LEFT JOIN public.technicians t ON t.id = pl.technician_id
       WHERE pl.id = $1
       `,
       [id]
@@ -161,12 +167,14 @@ router.get("/latest/:packageId", async (req, res, next) => {
         pl.id AS reading_id,
         pl.reading_date,
         pl.value,
-        pl.performed_by
+        pl.technician_id,
+        t.name AS technician_name
       FROM public.pv_attributes pa
       JOIN public.pv_data_types dt ON dt.id = pa.data_type_id
       JOIN public.packages pkg     ON pkg.package_type_id = pa.package_type_id
       LEFT JOIN public.pv_log pl
         ON pl.pv_attribute_id = pa.id AND pl.package_id = pkg.id
+      LEFT JOIN public.technicians t ON t.id = pl.technician_id
       WHERE pkg.id = $1 AND pa.active = TRUE
       ORDER BY pa.id, pl.reading_date DESC, pl.id DESC
       `,
@@ -181,17 +189,17 @@ router.get("/latest/:packageId", async (req, res, next) => {
 
 /*
  * POST /api/pvlog
- * Body: { package_id, pv_attribute_id, value, reading_date?, performed_by?, notes? }
+ * Body: { package_id, pv_attribute_id, value, reading_date?, technician_id?, notes? }
  *
  * "value" is the raw JS value (true/false, a number, or a string) and is
  * coerced to match the attribute's declared data_type before insert.
+ * technician_id is optional and references public.technicians.
  */
 router.post("/", async (req, res, next) => {
   try {
     const packageId = parseId(req.body.package_id);
     const pvAttributeId = parseId(req.body.pv_attribute_id);
     const readingDate = req.body.reading_date || new Date().toISOString().slice(0, 10);
-    const performedBy = String(req.body.performed_by ?? "").trim() || null;
     const notes = String(req.body.notes ?? "").trim() || null;
 
     if (!packageId) {
@@ -202,6 +210,23 @@ router.post("/", async (req, res, next) => {
     }
     if (req.body.value === undefined || req.body.value === null || req.body.value === "") {
       return res.status(400).json({ error: "value is required" });
+    }
+
+    const technicianIdRaw = req.body.technician_id;
+    const technicianId = technicianIdRaw === undefined || technicianIdRaw === null || technicianIdRaw === ""
+      ? null
+      : Number.parseInt(technicianIdRaw, 10);
+    if (technicianId !== null && (!Number.isInteger(technicianId) || technicianId <= 0)) {
+      return res.status(400).json({ error: "Invalid technician_id" });
+    }
+    if (technicianId !== null) {
+      const technician = await pool.query(
+        "SELECT id FROM public.technicians WHERE id = $1",
+        [technicianId]
+      );
+      if (technician.rowCount === 0) {
+        return res.status(400).json({ error: "Invalid technician_id: technician does not exist" });
+      }
     }
 
     const attribute = await findAttribute(pvAttributeId);
@@ -217,17 +242,17 @@ router.post("/", async (req, res, next) => {
     const result = await pool.query(
       `
       INSERT INTO public.pv_log
-        (package_id, pv_attribute_id, reading_date, value, performed_by, notes)
+        (package_id, pv_attribute_id, reading_date, value, technician_id, notes)
       VALUES ($1, $2, $3, $4::jsonb, $5, $6)
-      RETURNING id, package_id, pv_attribute_id, reading_date, value, performed_by, notes, created_at
+      RETURNING id, package_id, pv_attribute_id, reading_date, value, technician_id, notes, created_at
       `,
-      [packageId, pvAttributeId, readingDate, JSON.stringify(coerced), performedBy, notes]
+      [packageId, pvAttributeId, readingDate, JSON.stringify(coerced), technicianId, notes]
     );
 
     res.status(201).json(result.rows[0]);
   } catch (error) {
     if (error.code === "23503") {
-      return res.status(400).json({ error: "Invalid package_id or pv_attribute_id" });
+      return res.status(400).json({ error: "Invalid package_id, pv_attribute_id or technician_id" });
     }
     if (error.code === "23514") {
       return res.status(400).json({ error: "Value type does not match the attribute's declared data type" });
