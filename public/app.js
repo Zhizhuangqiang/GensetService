@@ -15,7 +15,8 @@ const ENDPOINTS = {
   serviceRecords: "/api/servicerecords",
   pvDataTypes: "/api/pvdatatypes",
   pvAttributes: "/api/pvattributes",
-  pvLog: "/api/pvlog"
+  pvLog: "/api/pvlog",
+  technicians: "/api/technicians"
 };
 
 const state = {
@@ -24,7 +25,13 @@ const state = {
   recent: [],
   currentView: "dashboard",
   currentSystem: "projects",
-  loading: false
+  loading: false,
+  recentFilters: {
+    projectId: "",
+    packageId: "",
+    serviceItemId: "",
+    sort: "date_desc"
+  }
 };
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -45,6 +52,10 @@ const elements = {
   statusFilter: $("#statusFilter"),
   statusSearch: $("#statusSearch"),
   recentLimit: $("#recentLimit"),
+  recentProjectFilter: $("#recentProjectFilter"),
+  recentPackageFilter: $("#recentPackageFilter"),
+  recentServiceItemFilter: $("#recentServiceItemFilter"),
+  recentSort: $("#recentSort"),
   systemSelect: $("#systemSelect")
 };
 
@@ -52,7 +63,7 @@ const viewMetadata = {
   dashboard: ["Dashboard", "Package maintenance overview"],
   maintenance: ["Service Status", "Current maintenance condition for every active schedule"],
   recent: ["Recent Service", "Completed package maintenance records"],
-  systems: ["Systems", "Projects, packages, service items, schedules and process values"]
+  systems: ["Systems", "Projects, packages, service items, schedules, process values and technicians"]
 };
 
 /* ---------------- Helpers ---------------- */
@@ -119,8 +130,7 @@ function statusBadge(status) {
   return `<span class="status-badge ${safeStatus}">${escapeHtml(statusLabel(safeStatus))}</span>`;
 }
 
-/* Combines a package's name with optional type/tag into a two-line cell,
- * matching the earlier "name + small subtext" presentation style. */
+/* Combines a package's name with optional type/tag into a two-line cell. */
 function packageCell(name, typeName, tag) {
   const meta = [typeName, tag].filter(Boolean).join(" · ");
   return `<strong>${escapeHtml(name ?? "–")}</strong>${
@@ -128,9 +138,7 @@ function packageCell(name, typeName, tag) {
   }`;
 }
 
-/* Renders a pv_log "value" (already parsed from jsonb by the API as a
- * JS boolean / number / string) for display, appending the unit when
- * present and numeric. */
+/* Renders a pv_log "value" for display, appending the unit when numeric. */
 function formatPvValue(value, dataTypeName, unit) {
   if (value === null || value === undefined) return "–";
   if (dataTypeName === "boolean") return value ? "Yes" : "No";
@@ -138,6 +146,47 @@ function formatPvValue(value, dataTypeName, unit) {
     return unit ? `${formatNumber(value)} ${escapeHtml(unit)}` : formatNumber(value);
   }
   return escapeHtml(String(value));
+}
+
+/* Renders "Name" or "Name · Company" for a technician reference on a
+ * record/reading row. Falls back to a dash when no technician is set. */
+function technicianCell(name, company) {
+  if (!name) return "–";
+  return company
+    ? `${escapeHtml(name)}<br><small>${escapeHtml(company)}</small>`
+    : escapeHtml(name);
+}
+
+/* Label used inside <option> elements: "Name — Company" when a company
+ * is on file, otherwise just "Name". */
+function technicianOptionLabel(t) {
+  return t.company_name ? `${t.name} — ${t.company_name}` : t.name;
+}
+
+/* Builds a sorted list of unique {id, name} options from a set of items,
+ * given the property names that hold the id and the display name. */
+function uniqueOptions(items, idKey, nameKey) {
+  const seen = new Map();
+  items.forEach((item) => {
+    const id = item[idKey];
+    if (id !== null && id !== undefined && !seen.has(id)) {
+      seen.set(id, item[nameKey] ?? `#${id}`);
+    }
+  });
+  return [...seen.entries()]
+    .map(([id, name]) => ({ id, name }))
+    .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+}
+
+/* Rebuilds a filter <select>'s options while preserving the current
+ * selection if it is still a valid option afterwards. */
+function refreshFilterOptions(selectEl, placeholderLabel, options) {
+  const previousValue = selectEl.value;
+  selectEl.innerHTML =
+    `<option value="">${escapeHtml(placeholderLabel)}</option>` +
+    options.map((o) => `<option value="${o.id}">${escapeHtml(o.name)}</option>`).join("");
+  const stillValid = [...selectEl.options].some((opt) => opt.value === previousValue);
+  selectEl.value = stillValid ? previousValue : "";
 }
 
 async function apiFetch(url) {
@@ -179,9 +228,7 @@ async function fillProjectSelect(selectId) {
   return projects;
 }
 
-/* Fill a package <select> with packages belonging to the given project.
- * Returns the filtered package list (each including package_type_id so
- * callers can look up the type without a second request). */
+/* Fill a package <select> with packages belonging to the given project. */
 async function fillPackagesForProject(projectId, selectId) {
   const select = $(selectId);
   if (!projectId) {
@@ -209,6 +256,19 @@ async function fillPackagesForProject(projectId, selectId) {
       .join("");
   select.disabled = false;
   return packages;
+}
+
+/* Populate a <select> with active technicians, shown as "Name — Company".
+ * Always includes a blank "no technician" option since technician_id is
+ * optional on both service records and readings. */
+async function fillTechnicianSelect(selectId) {
+  const technicians = itemsOf(await apiFetch(ENDPOINTS.technicians + "?active=true"));
+  $(selectId).innerHTML =
+    '<option value="">Select technician</option>' +
+    technicians
+      .map((t) => `<option value="${t.id}">${escapeHtml(technicianOptionLabel(t))}</option>`)
+      .join("");
+  return technicians;
 }
 
 /* ---------------- UI state ---------------- */
@@ -347,6 +407,7 @@ function renderStatusTable() {
   $("#statusCount").textContent = `${items.length} schedule${items.length === 1 ? "" : "s"}`;
 }
 
+/* ---------------- Recent Service: rows, filters, sort ---------------- */
 function recentRows(items) {
   return items
     .map(
@@ -356,7 +417,7 @@ function recentRows(items) {
       <td>${escapeHtml(item.project_name)}</td>
       <td>${packageCell(item.package_name, item.package_type_name, item.package_tag)}</td>
       <td>${escapeHtml(item.service_item_name)}</td>
-      <td>${escapeHtml(item.performed_by || "–")}</td>
+      <td>${technicianCell(item.technician_name, item.technician_company)}</td>
       <td>${escapeHtml(item.work_order_number || "–")}</td>
       <td>${formatNumber(item.attachment_count)}</td>
     </tr>
@@ -365,10 +426,10 @@ function recentRows(items) {
     .join("");
 }
 
-function renderRecent() {
-  const fullBody = $("#recentTableBody");
+/* Dashboard mini-widget: always shows the latest 5 from the raw fetch,
+ * unaffected by the Recent Service page's filters/sort. */
+function renderDashboardRecent() {
   const dashboardBody = $("#dashboardRecentBody");
-  fullBody.innerHTML = recentRows(state.recent);
   dashboardBody.innerHTML = state.recent
     .slice(0, 5)
     .map(
@@ -378,21 +439,75 @@ function renderRecent() {
       <td>${escapeHtml(item.project_name)}</td>
       <td>${packageCell(item.package_name, item.package_type_name, item.package_tag)}</td>
       <td>${escapeHtml(item.service_item_name)}</td>
-      <td>${escapeHtml(item.performed_by || "–")}</td>
+      <td>${technicianCell(item.technician_name, item.technician_company)}</td>
       <td>${escapeHtml(item.work_order_number || "–")}</td>
     </tr>
   `
     )
     .join("");
-  $("#recentEmpty").classList.toggle("hidden", state.recent.length > 0);
   $("#dashboardRecentEmpty").classList.toggle("hidden", state.recent.length > 0);
+}
+
+/* Rebuilds the Project / Package / Service Item filter dropdowns from
+ * whatever records are currently loaded (the batch defined by the
+ * "Number of records" selector), preserving the user's current
+ * selections where still valid. */
+function populateRecentFilterOptions() {
+  refreshFilterOptions(
+    elements.recentProjectFilter,
+    "All projects",
+    uniqueOptions(state.recent, "project_id", "project_name")
+  );
+  refreshFilterOptions(
+    elements.recentPackageFilter,
+    "All packages",
+    uniqueOptions(state.recent, "package_id", "package_name")
+  );
+  refreshFilterOptions(
+    elements.recentServiceItemFilter,
+    "All service items",
+    uniqueOptions(state.recent, "service_item_id", "service_item_name")
+  );
+}
+
+/* Applies the Project / Package / Service Item filters and the date
+ * sort order to the loaded batch, then renders the main Recent Service
+ * table. This never re-fetches — it only re-slices/sorts state.recent. */
+function applyRecentFilters() {
+  const projectId = elements.recentProjectFilter.value;
+  const packageId = elements.recentPackageFilter.value;
+  const serviceItemId = elements.recentServiceItemFilter.value;
+  const sort = elements.recentSort.value;
+
+  state.recentFilters = { projectId, packageId, serviceItemId, sort };
+
+  let items = state.recent.filter((item) => {
+    if (projectId && String(item.project_id) !== projectId) return false;
+    if (packageId && String(item.package_id) !== packageId) return false;
+    if (serviceItemId && String(item.service_item_id) !== serviceItemId) return false;
+    return true;
+  });
+
+  items = items.slice().sort((a, b) => {
+    const dateA = a.service_date ?? "";
+    const dateB = b.service_date ?? "";
+    return sort === "date_asc" ? dateA.localeCompare(dateB) : dateB.localeCompare(dateA);
+  });
+
+  $("#recentTableBody").innerHTML = recentRows(items);
+  $("#recentEmpty").classList.toggle("hidden", items.length > 0);
+  $("#recentCount").textContent = `${items.length} of ${state.recent.length} record${
+    state.recent.length === 1 ? "" : "s"
+  }`;
 }
 
 async function loadRecent() {
   const limit = Number(elements.recentLimit.value || 20);
   const data = await apiFetch(ENDPOINTS.recent(limit));
   state.recent = itemsOf(data);
-  renderRecent();
+  renderDashboardRecent();
+  populateRecentFilterOptions();
+  applyRecentFilters();
 }
 
 async function loadReadingsCount() {
@@ -403,6 +518,16 @@ async function loadReadingsCount() {
   } catch (error) {
     // Non-fatal for the dashboard; leave the count as-is.
     console.warn("Readings count unavailable", error);
+  }
+}
+
+async function loadTechniciansCount() {
+  try {
+    const data = await apiFetch(ENDPOINTS.technicians);
+    const el = $("#techniciansCount");
+    if (el) el.textContent = formatNumber(data.count ?? itemsOf(data).length);
+  } catch (error) {
+    console.warn("Technicians count unavailable", error);
   }
 }
 
@@ -424,6 +549,7 @@ async function loadAll({ notify = false } = {}) {
     renderNextDue();
     renderStatusTable();
     loadReadingsCount();
+    loadTechniciansCount();
     setConnection(true);
     elements.lastUpdated.textContent = `Updated ${new Intl.DateTimeFormat(undefined, {
       hour: "2-digit",
@@ -595,7 +721,7 @@ async function loadReadingsView() {
   renderSystemsTable(
     "Readings",
     "Logged process value readings",
-    `<tr><th>ID</th><th>Project</th><th>Package</th><th>Process Value</th><th>Value</th><th>Reading Date</th><th>Recorded</th></tr>`,
+    `<tr><th>ID</th><th>Project</th><th>Package</th><th>Process Value</th><th>Value</th><th>Reading Date</th><th>Technician</th><th>Recorded</th></tr>`,
     readings
       .map(
         (r) => `
@@ -606,7 +732,31 @@ async function loadReadingsView() {
         <td>${escapeHtml(r.attribute_name ?? "–")}</td>
         <td>${formatPvValue(r.value, r.data_type_name, r.unit)}</td>
         <td>${formatDate(r.reading_date)}</td>
+        <td>${technicianCell(r.technician_name, r.technician_company)}</td>
         <td>${formatDateTime(r.created_at)}</td>
+      </tr>`
+      )
+      .join("")
+  );
+}
+
+async function loadTechniciansView() {
+  const technicians = itemsOf(await apiFetch(ENDPOINTS.technicians));
+  renderSystemsTable(
+    "Technicians",
+    "People who perform service work and record readings",
+    `<tr><th>ID</th><th>Name</th><th>Title</th><th>Company</th><th>Phone</th><th>Email</th><th>Active</th></tr>`,
+    technicians
+      .map(
+        (t) => `
+      <tr>
+        <td>${escapeHtml(t.id)}</td>
+        <td>${escapeHtml(t.name)}</td>
+        <td>${escapeHtml(t.title ?? "–")}</td>
+        <td>${escapeHtml(t.company_name ?? "–")}</td>
+        <td>${escapeHtml(t.phone ?? "–")}</td>
+        <td>${escapeHtml(t.email ?? "–")}</td>
+        <td>${t.active ? "Yes" : "No"}</td>
       </tr>`
       )
       .join("")
@@ -620,7 +770,8 @@ const systemLoaders = {
   serviceitems: loadServiceItemsView,
   schedules: loadSchedulesView,
   pvattributes: loadPvAttributesView,
-  readings: loadReadingsView
+  readings: loadReadingsView,
+  technicians: loadTechniciansView
 };
 
 async function showSystem(systemKey) {
@@ -654,7 +805,10 @@ async function openRecordModal() {
   scheduleSelect.innerHTML = '<option value="">Select package first</option>';
   scheduleSelect.disabled = true;
   try {
-    await fillProjectSelect("#recProject");
+    await Promise.all([
+      fillProjectSelect("#recProject"),
+      fillTechnicianSelect("#recTechnician")
+    ]);
     recordModal.classList.remove("hidden");
   } catch (error) {
     showAlert(`Unable to open the record form: ${error.message}`);
@@ -724,10 +878,11 @@ async function submitRecord(event) {
     showAlert("Service date is required.");
     return;
   }
+  const technicianValue = $("#recTechnician").value;
   const payload = {
     service_schedule_id: scheduleId,
     service_date: serviceDate,
-    performed_by: $("#recPerformedBy").value.trim() || null,
+    technician_id: technicianValue ? Number(technicianValue) : null,
     work_order_number: $("#recWorkOrder").value.trim() || null,
     remarks: $("#recRemarks").value.trim() || null
   };
@@ -1093,7 +1248,10 @@ async function openReadingModal() {
   attributeSelect.disabled = true;
   resetReadingValueField();
   try {
-    await fillProjectSelect("#rdProject");
+    await Promise.all([
+      fillProjectSelect("#rdProject"),
+      fillTechnicianSelect("#rdTechnician")
+    ]);
     readingModal.classList.remove("hidden");
   } catch (error) {
     showAlert(`Unable to open the reading form: ${error.message}`);
@@ -1105,7 +1263,6 @@ function closeReadingModal() {
 }
 
 function resetReadingValueField(message = "Select a process value first") {
-  $("#rdValueLabel").innerHTML = 'Value <em>*</em>';
   $("#rdValueField").innerHTML = `
     <label for="rdValueInput" id="rdValueLabel">Value <em>*</em></label>
     <input id="rdValueInput" type="text" disabled placeholder="${escapeHtml(message)}" />
@@ -1243,12 +1400,13 @@ async function submitReading(event) {
     value = rawValue;
   }
 
+  const technicianValue = $("#rdTechnician").value;
   const payload = {
     package_id: packageId,
     pv_attribute_id: attributeId,
     value,
     reading_date: readingDate,
-    performed_by: $("#rdPerformedBy").value.trim() || null,
+    technician_id: technicianValue ? Number(technicianValue) : null,
     notes: $("#rdNotes").value.trim() || null
   };
 
@@ -1268,6 +1426,51 @@ async function submitReading(event) {
   }
 }
 
+/* ---------------- Add Technician ---------------- */
+const technicianModal = $("#technicianModal");
+const technicianForm = $("#technicianForm");
+
+function openTechnicianModal() {
+  technicianForm.reset();
+  technicianModal.classList.remove("hidden");
+  $("#techName").focus();
+}
+
+function closeTechnicianModal() {
+  technicianModal.classList.add("hidden");
+}
+
+async function submitTechnician(event) {
+  event.preventDefault();
+  const saveButton = $("#technicianSave");
+  const payload = {
+    name: $("#techName").value.trim(),
+    title: $("#techTitle").value.trim() || null,
+    company_name: $("#techCompany").value.trim() || null,
+    phone: $("#techPhone").value.trim() || null,
+    email: $("#techEmail").value.trim() || null,
+    notes: $("#techNotes").value.trim() || null
+  };
+  if (!payload.name) {
+    showAlert("Technician name is required.");
+    return;
+  }
+  saveButton.disabled = true;
+  saveButton.textContent = "Saving...";
+  try {
+    await apiPost(ENDPOINTS.technicians, payload);
+    closeTechnicianModal();
+    showToast("Technician added");
+    await loadTechniciansView();
+    await loadTechniciansCount();
+  } catch (error) {
+    showAlert(`Unable to save technician: ${error.message}`);
+  } finally {
+    saveButton.disabled = false;
+    saveButton.textContent = "Save technician";
+  }
+}
+
 /* ---------------- Add button dispatcher ---------------- */
 // Packages uses its own separate button (#addPackageButton), toggled in showSystem.
 function updateAddButton(systemKey) {
@@ -1279,7 +1482,8 @@ function updateAddButton(systemKey) {
     serviceitems: { label: "+ Add Service Item", open: openServiceItemModal },
     schedules: { label: "+ Add Schedule", open: openScheduleModal },
     pvattributes: { label: "+ Add Process Value", open: openPvAttributeModal },
-    readings: { label: "+ Add Reading", open: openReadingModal }
+    readings: { label: "+ Add Reading", open: openReadingModal },
+    technicians: { label: "+ Add Technician", open: openTechnicianModal }
   };
   const cfg = map[systemKey];
   if (cfg) {
@@ -1324,6 +1528,7 @@ function bindEvents() {
   }
   elements.statusFilter.addEventListener("change", renderStatusTable);
   elements.statusSearch.addEventListener("input", renderStatusTable);
+
   elements.recentLimit.addEventListener("change", async () => {
     try {
       await loadRecent();
@@ -1331,6 +1536,12 @@ function bindEvents() {
       showAlert(`Unable to load recent records: ${error.message}`);
     }
   });
+  // Recent Service filters + sort (client-side, no re-fetch)
+  elements.recentProjectFilter.addEventListener("change", applyRecentFilters);
+  elements.recentPackageFilter.addEventListener("change", applyRecentFilters);
+  elements.recentServiceItemFilter.addEventListener("change", applyRecentFilters);
+  elements.recentSort.addEventListener("change", applyRecentFilters);
+
   elements.refreshButton.addEventListener("click", () => loadAll({ notify: true }));
 
   // Add Service Record modal
@@ -1404,6 +1615,14 @@ function bindEvents() {
   $("#rdProject").addEventListener("change", onReadingProjectChange);
   $("#rdPackage").addEventListener("change", onReadingPackageChange);
   $("#rdAttribute").addEventListener("change", onReadingAttributeChange);
+
+  // Add Technician modal
+  $("#technicianModalClose").addEventListener("click", closeTechnicianModal);
+  $("#technicianCancel").addEventListener("click", closeTechnicianModal);
+  technicianForm.addEventListener("submit", submitTechnician);
+  technicianModal.addEventListener("click", (event) => {
+    if (event.target === technicianModal) closeTechnicianModal();
+  });
 
   elements.menuButton.addEventListener("click", () =>
     elements.sidebar.classList.contains("open") ? closeSidebar() : openSidebar()
