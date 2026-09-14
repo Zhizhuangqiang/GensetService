@@ -141,7 +141,6 @@ app.use("/api/pvattributes",   pvAttributesRouter);
 app.use("/api/pvlog",          pvLogRouter);
 app.use("/api/technicians",    techniciansRouter);
 
-// --- Firmware / device tracking routes ---
 app.use("/api/manufacturers",  manufacturersRouter);
 app.use("/api/devicetypes",    deviceTypesRouter);
 app.use("/api/checktypes",     checkTypesRouter);
