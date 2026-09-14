@@ -70,7 +70,6 @@
         </header>
         <main id="main-content" tabindex="-1">
           <div class="alert hidden" id="globalAlert" role="alert"></div>
-
           <!-- ============================== Dashboard ============================== -->
           <section class="view" id="dashboardView" data-view-panel="dashboard">
             <div class="metric-grid" aria-label="Maintenance summary">
@@ -179,7 +178,6 @@
               </div>
             </section>
           </section>
-
           <!-- ============================== Service Status ============================== -->
           <section class="view hidden" id="maintenanceView" data-view-panel="maintenance">
             <section class="panel">
@@ -235,7 +233,6 @@
               </div>
             </section>
           </section>
-
           <!-- ============================== Recent Service ============================== -->
           <section class="view hidden" id="recentView" data-view-panel="recent">
             <section class="panel">
@@ -310,7 +307,6 @@
               </div>
             </section>
           </section>
-
           <!-- ============================== Readings ============================== -->
           <section class="view hidden" id="readingsView" data-view-panel="readings">
             <section class="panel">
@@ -375,7 +371,6 @@
               </div>
             </section>
           </section>
-
           <!-- ============================== Systems ============================== -->
           <section class="view hidden" id="systemsView" data-view-panel="systems">
             <section class="panel">
@@ -460,7 +455,6 @@
       </div>
     </div>
     <div class="sidebar-backdrop hidden" id="sidebarBackdrop"></div>
-
     <!-- ============================== Add Service Record modal ============================== -->
     <div
       class="modal-backdrop hidden"
@@ -503,7 +497,9 @@
               </div>
               <div class="field">
                 <label for="recPerformedBy">Performed By</label>
-                <input id="recPerformedBy" type="text" />
+                <select id="recPerformedBy">
+                  <option value="">Select technician</option>
+                </select>
               </div>
               <div class="field">
                 <label for="recWorkOrder">Work Order</label>
@@ -522,7 +518,6 @@
         </form>
       </div>
     </div>
-
     <!-- ============================== Add Project modal ============================== -->
     <div class="modal-backdrop hidden" id="projectModal" role="dialog"
          aria-modal="true" aria-labelledby="projectModalTitle">
@@ -552,7 +547,6 @@
         </form>
       </div>
     </div>
-
     <!-- ============================== Add Package modal ============================== -->
     <div
       class="modal-backdrop hidden"
@@ -604,7 +598,6 @@
         </form>
       </div>
     </div>
-
     <!-- ============================== Add Package Type modal ============================== -->
     <div
       class="modal-backdrop hidden"
@@ -639,7 +632,6 @@
         </form>
       </div>
     </div>
-
     <!-- ============================== Add Service Item modal ============================== -->
     <div
       class="modal-backdrop hidden"
@@ -675,7 +667,6 @@
         </form>
       </div>
     </div>
-
     <!-- ============================== Add Schedule modal ============================== -->
     <div
       class="modal-backdrop hidden"
@@ -755,7 +746,6 @@
         </form>
       </div>
     </div>
-
     <!-- ============================== Add Process Value modal ============================== -->
     <div
       class="modal-backdrop hidden"
@@ -807,7 +797,6 @@
         </form>
       </div>
     </div>
-
     <!-- ============================== Add Reading modal ============================== -->
     <div
       class="modal-backdrop hidden"
@@ -854,7 +843,9 @@
               </div>
               <div class="field">
                 <label for="rdPerformedBy">Performed By</label>
-                <input id="rdPerformedBy" type="text" />
+                <select id="rdPerformedBy">
+                  <option value="">Select technician</option>
+                </select>
               </div>
               <div class="field full">
                 <label for="rdNotes">Notes</label>
@@ -869,7 +860,6 @@
         </form>
       </div>
     </div>
-
     <!-- ============================== Add Manufacturer modal ============================== -->
     <div
       class="modal-backdrop hidden"
@@ -933,7 +923,6 @@
         </form>
       </div>
     </div>
-
     <!-- ============================== Add Device Type modal ============================== -->
     <div
       class="modal-backdrop hidden"
@@ -965,7 +954,6 @@
         </form>
       </div>
     </div>
-
     <!-- ============================== Add Check Type modal ============================== -->
     <div
       class="modal-backdrop hidden"
@@ -997,7 +985,6 @@
         </form>
       </div>
     </div>
-
     <!-- ============================== Add Version Source modal ============================== -->
     <div
       class="modal-backdrop hidden"
@@ -1029,7 +1016,6 @@
         </form>
       </div>
     </div>
-
     <!-- ============================== Add Technician modal ============================== -->
     <div
       class="modal-backdrop hidden"
@@ -1081,7 +1067,6 @@
         </form>
       </div>
     </div>
-
     <!-- ============================== Add Device modal ============================== -->
     <div
       class="modal-backdrop hidden"
@@ -1133,7 +1118,6 @@
         </form>
       </div>
     </div>
-
     <!-- ============================== Add Version Log modal ============================== -->
     <div
       class="modal-backdrop hidden"
@@ -1209,7 +1193,6 @@
         </form>
       </div>
     </div>
-
     <!-- ============================== Add Package Device modal ============================== -->
     <div
       class="modal-backdrop hidden"
@@ -1299,7 +1282,6 @@
         </form>
       </div>
     </div>
-
     <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
   </body>
 </html>

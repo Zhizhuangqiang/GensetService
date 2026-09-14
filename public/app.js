@@ -269,8 +269,9 @@ async function fillPackagesForProject(projectId, selectId) {
   return packages;
 }
 
-/* Populate a <select> with technicians (used by many of the firmware
- * tracker forms: contacts, installed-by, confirmed-by, etc.). */
+/* Populate a <select> with technicians (used by the firmware tracker
+ * forms — contacts, installed-by, confirmed-by — as well as the
+ * "Performed By" field on Add Record and Add Reading). */
 async function fillTechnicianSelect(selectId, placeholder = "None") {
   const technicians = itemsOf(await apiFetch(ENDPOINTS.technicians + "?active=true"));
   $(selectId).innerHTML =
@@ -419,6 +420,9 @@ function hoursRemainingCell(item) {
 }
 
 /* ---------------- Recent Service: rows, filters, sort ---------------- */
+/* NOTE: "Performed By" is a technician_id foreign key end-to-end. The
+ * API (dashboard.js /recent and servicerecords.js) returns the joined
+ * name as "technician_name" — NOT "performed_by". */
 function recentRows(items) {
   return items
     .map(
@@ -428,7 +432,7 @@ function recentRows(items) {
       <td>${escapeHtml(item.project_name)}</td>
       <td>${packageCell(item.package_name, item.package_type_name, item.package_tag)}</td>
       <td>${escapeHtml(item.service_item_name)}</td>
-      <td>${escapeHtml(item.performed_by || "–")}</td>
+      <td>${escapeHtml(item.technician_name || "–")}</td>
       <td>${escapeHtml(item.work_order_number || "–")}</td>
       <td>${formatNumber(item.attachment_count)}</td>
     </tr>
@@ -447,7 +451,7 @@ function renderDashboardRecent() {
       <td>${escapeHtml(item.project_name)}</td>
       <td>${packageCell(item.package_name, item.package_type_name, item.package_tag)}</td>
       <td>${escapeHtml(item.service_item_name)}</td>
-      <td>${escapeHtml(item.performed_by || "–")}</td>
+      <td>${escapeHtml(item.technician_name || "–")}</td>
       <td>${escapeHtml(item.work_order_number || "–")}</td>
     </tr>
   `
@@ -505,6 +509,9 @@ async function loadRecent() {
 }
 
 /* ---------------- Readings: rows, filters, sort ---------------- */
+/* NOTE: "Performed By" is a technician_id foreign key end-to-end. The
+ * API (pvlog.js) returns the joined name as "technician_name" — NOT
+ * "performed_by". */
 function readingRows(items) {
   return items
     .map(
@@ -515,6 +522,7 @@ function readingRows(items) {
       <td>${packageCell(item.package_name, null, item.package_tag)}</td>
       <td>${escapeHtml(item.attribute_name ?? "–")}</td>
       <td>${formatPvValue(item.value, item.data_type_name, item.unit)}</td>
+      <td>${escapeHtml(item.technician_name || "–")}</td>
       <td>${formatDateTime(item.created_at)}</td>
     </tr>
   `
@@ -1082,7 +1090,10 @@ async function openRecordModal() {
   scheduleSelect.innerHTML = '<option value="">Select package first</option>';
   scheduleSelect.disabled = true;
   try {
-    await fillProjectSelect("#recProject");
+    await Promise.all([
+      fillProjectSelect("#recProject"),
+      fillTechnicianSelect("#recPerformedBy", "Not specified")
+    ]);
     recordModal.classList.remove("hidden");
   } catch (error) {
     showAlert(`Unable to open the record form: ${error.message}`);
@@ -1151,7 +1162,7 @@ async function submitRecord(event) {
   const payload = {
     service_schedule_id: scheduleId,
     service_date: serviceDate,
-    performed_by: $("#recPerformedBy").value.trim() || null,
+    technician_id: $("#recPerformedBy").value || null,
     work_order_number: $("#recWorkOrder").value.trim() || null,
     remarks: $("#recRemarks").value.trim() || null
   };
@@ -1507,7 +1518,10 @@ async function openReadingModal() {
   attributeSelect.disabled = true;
   resetReadingValueField();
   try {
-    await fillProjectSelect("#rdProject");
+    await Promise.all([
+      fillProjectSelect("#rdProject"),
+      fillTechnicianSelect("#rdPerformedBy", "Not specified")
+    ]);
     readingModal.classList.remove("hidden");
   } catch (error) {
     showAlert(`Unable to open the reading form: ${error.message}`);
@@ -1652,7 +1666,7 @@ async function submitReading(event) {
     pv_attribute_id: attributeId,
     value,
     reading_date: readingDate,
-    performed_by: $("#rdPerformedBy").value.trim() || null,
+    technician_id: $("#rdPerformedBy").value || null,
     notes: $("#rdNotes").value.trim() || null
   };
   saveButton.disabled = true;
