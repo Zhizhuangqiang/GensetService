@@ -18,6 +18,15 @@ const pvAttributesRouter     = require("./routes/pvattributes");
 const pvLogRouter            = require("./routes/pvlog");
 const techniciansRouter      = require("./routes/technicians");
 
+// --- Firmware / device tracking routers ---
+const manufacturersRouter    = require("./routes/manufacturers");
+const deviceTypesRouter      = require("./routes/devicetypes");
+const checkTypesRouter       = require("./routes/checktypes");
+const versionSourcesRouter   = require("./routes/versionsources");
+const devicesRouter          = require("./routes/devices");
+const versionLogsRouter      = require("./routes/versionlogs");
+const packageDevicesRouter   = require("./routes/packagedevices");
+
 const app = express();
 app.disable("x-powered-by");
 app.use(helmet());
@@ -55,7 +64,6 @@ function timingSafeEqual(a, b) {
 function basicAuth(req, res, next) {
   const expectedUser = process.env.BASIC_AUTH_USER;
   const expectedPass = process.env.BASIC_AUTH_PASS;
-
   if (!expectedUser || !expectedPass) {
     console.error(
       "BASIC_AUTH_USER / BASIC_AUTH_PASS are not set — refusing to serve requests."
@@ -64,10 +72,8 @@ function basicAuth(req, res, next) {
       error: "Server misconfigured: authentication credentials are not set."
     });
   }
-
   const header = req.headers.authorization || "";
   const [scheme, encoded] = header.split(" ");
-
   if (scheme === "Basic" && encoded) {
     const decoded = Buffer.from(encoded, "base64").toString("utf8");
     const separatorIndex = decoded.indexOf(":");
@@ -79,7 +85,6 @@ function basicAuth(req, res, next) {
       }
     }
   }
-
   res.set("WWW-Authenticate", 'Basic realm="Package Service Manager", charset="UTF-8"');
   return res.status(401).json({ error: "Authentication required" });
 }
@@ -135,6 +140,15 @@ app.use("/api/pvdatatypes",    pvDataTypesRouter);
 app.use("/api/pvattributes",   pvAttributesRouter);
 app.use("/api/pvlog",          pvLogRouter);
 app.use("/api/technicians",    techniciansRouter);
+
+// --- Firmware / device tracking routes ---
+app.use("/api/manufacturers",  manufacturersRouter);
+app.use("/api/devicetypes",    deviceTypesRouter);
+app.use("/api/checktypes",     checkTypesRouter);
+app.use("/api/versionsources", versionSourcesRouter);
+app.use("/api/devices",        devicesRouter);
+app.use("/api/versionlogs",    versionLogsRouter);
+app.use("/api/packagedevices", packageDevicesRouter);
 
 app.use((_req, res) => res.status(404).json({ error: "Route not found" }));
 

@@ -15,7 +15,16 @@ const ENDPOINTS = {
   serviceRecords: "/api/servicerecords",
   pvDataTypes: "/api/pvdatatypes",
   pvAttributes: "/api/pvattributes",
-  pvLog: "/api/pvlog"
+  pvLog: "/api/pvlog",
+  technicians: "/api/technicians",
+  // --- Firmware / device tracking ---
+  manufacturers: "/api/manufacturers",
+  devices: "/api/devices",
+  deviceTypes: "/api/devicetypes",
+  checkTypes: "/api/checktypes",
+  versionSources: "/api/versionsources",
+  versionLogs: "/api/versionlogs",
+  packageDevices: "/api/packagedevices"
 };
 
 const state = {
@@ -66,7 +75,13 @@ const elements = {
   readingsPackageFilter: $("#readingsPackageFilter"),
   readingsAttributeFilter: $("#readingsAttributeFilter"),
   readingsSort: $("#readingsSort"),
-  systemSelect: $("#systemSelect")
+  systemSelect: $("#systemSelect"),
+  systemsFilterRow: $("#systemsFilterRow"),
+  sysManufacturerFilter: $("#sysManufacturerFilter"),
+  sysDeviceFilter: $("#sysDeviceFilter"),
+  sysProjectFilter: $("#sysProjectFilter"),
+  sysPackageFilter: $("#sysPackageFilter"),
+  sysDeviceTypeFilter: $("#sysDeviceTypeFilter")
 };
 
 const viewMetadata = {
@@ -74,7 +89,7 @@ const viewMetadata = {
   maintenance: ["Service Status", "Current maintenance condition for every active schedule"],
   recent: ["Recent Service", "Completed package maintenance records"],
   readings: ["Readings", "Logged process value readings"],
-  systems: ["Systems", "Projects, packages, service items, schedules and process values"]
+  systems: ["Systems", "Projects, packages, service items, schedules, process values and firmware tracking"]
 };
 
 /* ---------------- Helpers ---------------- */
@@ -254,23 +269,30 @@ async function fillPackagesForProject(projectId, selectId) {
   return packages;
 }
 
+/* Populate a <select> with technicians (used by many of the firmware
+ * tracker forms: contacts, installed-by, confirmed-by, etc.). */
+async function fillTechnicianSelect(selectId, placeholder = "None") {
+  const technicians = itemsOf(await apiFetch(ENDPOINTS.technicians + "?active=true"));
+  $(selectId).innerHTML =
+    `<option value="">${escapeHtml(placeholder)}</option>` +
+    technicians.map((t) => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join("");
+  return technicians;
+}
+
 /* ---------------- UI state ---------------- */
 function setConnection(isOnline) {
   elements.connectionDot.classList.toggle("online", isOnline);
   elements.connectionDot.classList.toggle("offline", !isOnline);
   elements.connectionText.textContent = isOnline ? "API connected" : "API unavailable";
 }
-
 function showAlert(message) {
   elements.alert.textContent = message;
   elements.alert.classList.remove("hidden");
 }
-
 function clearAlert() {
   elements.alert.classList.add("hidden");
   elements.alert.textContent = "";
 }
-
 let toastTimer;
 function showToast(message) {
   clearTimeout(toastTimer);
@@ -278,7 +300,6 @@ function showToast(message) {
   elements.toast.classList.remove("hidden");
   toastTimer = setTimeout(() => elements.toast.classList.add("hidden"), 3200);
 }
-
 function setView(view) {
   state.currentView = view;
   $$("[data-view-panel]").forEach((panel) =>
@@ -292,13 +313,11 @@ function setView(view) {
   elements.pageSubtitle.textContent = subtitle;
   closeSidebar();
 }
-
 function openSidebar() {
   elements.sidebar.classList.add("open");
   elements.sidebarBackdrop.classList.remove("hidden");
   elements.menuButton.setAttribute("aria-expanded", "true");
 }
-
 function closeSidebar() {
   elements.sidebar.classList.remove("open");
   elements.sidebarBackdrop.classList.add("hidden");
@@ -324,7 +343,6 @@ function renderDashboard(summary) {
     if (el) el.textContent = formatNumber(value);
   });
 }
-
 function renderNextDue() {
   const host = $("#nextDueList");
   const items = state.statuses
@@ -352,7 +370,6 @@ function renderNextDue() {
     )
     .join("");
 }
-
 function renderStatusTable() {
   const status = elements.statusFilter.value;
   const search = elements.statusSearch.value.trim().toLowerCase();
@@ -390,12 +407,7 @@ function renderStatusTable() {
   empty.classList.toggle("hidden", items.length > 0);
   $("#statusCount").textContent = `${items.length} schedule${items.length === 1 ? "" : "s"}`;
 }
-
-/* Renders the "Hours" column cell for the Service Status table. Shows
- * hours remaining until the next hour-based service is due (negative
- * values mean overdue-by-that-much), with the used/interval hours as a
- * small subtext. Falls back to a dash when the schedule doesn't track
- * running hours or there isn't enough pv_log data yet to compute it. */
+/* Renders the "Hours" column cell for the Service Status table. */
 function hoursRemainingCell(item) {
   if (!item.track_running_hours || item.interval_running_hours == null) return "–";
   if (item.hours_remaining == null) return `<small>No hours data</small>`;
@@ -424,9 +436,6 @@ function recentRows(items) {
     )
     .join("");
 }
-
-/* Dashboard mini-widget: always shows the latest 5 from the raw fetch,
- * unaffected by the Recent Service page's filters/sort. */
 function renderDashboardRecent() {
   const dashboardBody = $("#dashboardRecentBody");
   dashboardBody.innerHTML = state.recent
@@ -446,11 +455,6 @@ function renderDashboardRecent() {
     .join("");
   $("#dashboardRecentEmpty").classList.toggle("hidden", state.recent.length > 0);
 }
-
-/* Rebuilds the Project / Package / Service Item filter dropdowns from
- * whatever records are currently loaded (the batch defined by the
- * "Number of records" selector), preserving the user's current
- * selections where still valid. */
 function populateRecentFilterOptions() {
   refreshFilterOptions(
     elements.recentProjectFilter,
@@ -468,38 +472,29 @@ function populateRecentFilterOptions() {
     uniqueOptions(state.recent, "service_item_id", "service_item_name")
   );
 }
-
-/* Applies the Project / Package / Service Item filters and the date
- * sort order to the loaded batch, then renders the main Recent Service
- * table. This never re-fetches — it only re-slices/sorts state.recent. */
 function applyRecentFilters() {
   const projectId = elements.recentProjectFilter.value;
   const packageId = elements.recentPackageFilter.value;
   const serviceItemId = elements.recentServiceItemFilter.value;
   const sort = elements.recentSort.value;
-
   state.recentFilters = { projectId, packageId, serviceItemId, sort };
-
   let items = state.recent.filter((item) => {
     if (projectId && String(item.project_id) !== projectId) return false;
     if (packageId && String(item.package_id) !== packageId) return false;
     if (serviceItemId && String(item.service_item_id) !== serviceItemId) return false;
     return true;
   });
-
   items = items.slice().sort((a, b) => {
     const dateA = a.service_date ?? "";
     const dateB = b.service_date ?? "";
     return sort === "date_asc" ? dateA.localeCompare(dateB) : dateB.localeCompare(dateA);
   });
-
   $("#recentTableBody").innerHTML = recentRows(items);
   $("#recentEmpty").classList.toggle("hidden", items.length > 0);
   $("#recentCount").textContent = `${items.length} of ${state.recent.length} record${
     state.recent.length === 1 ? "" : "s"
   }`;
 }
-
 async function loadRecent() {
   const limit = Number(elements.recentLimit.value || 20);
   const data = await apiFetch(ENDPOINTS.recent(limit));
@@ -526,10 +521,6 @@ function readingRows(items) {
     )
     .join("");
 }
-
-/* Rebuilds the Project / Package / Process Value filter dropdowns from
- * whatever readings are currently loaded, preserving the user's current
- * selections where still valid. */
 function populateReadingsFilterOptions() {
   refreshFilterOptions(
     elements.readingsProjectFilter,
@@ -547,42 +538,29 @@ function populateReadingsFilterOptions() {
     uniqueOptions(state.readings, "pv_attribute_id", "attribute_name")
   );
 }
-
-/* Applies the Project / Package / Process Value filters and the date
- * sort order to the loaded batch, then renders the Readings table.
- * This never re-fetches — it only re-slices/sorts state.readings. */
 function applyReadingsFilters() {
   const projectId = elements.readingsProjectFilter.value;
   const packageId = elements.readingsPackageFilter.value;
   const attributeId = elements.readingsAttributeFilter.value;
   const sort = elements.readingsSort.value;
-
   state.readingsFilters = { projectId, packageId, attributeId, sort };
-
   let items = state.readings.filter((item) => {
     if (projectId && String(item.project_id) !== projectId) return false;
     if (packageId && String(item.package_id) !== packageId) return false;
     if (attributeId && String(item.pv_attribute_id) !== attributeId) return false;
     return true;
   });
-
   items = items.slice().sort((a, b) => {
     const dateA = a.reading_date ?? "";
     const dateB = b.reading_date ?? "";
     return sort === "date_asc" ? dateA.localeCompare(dateB) : dateB.localeCompare(dateA);
   });
-
   $("#readingsTableBody").innerHTML = readingRows(items);
   $("#readingsEmpty").classList.toggle("hidden", items.length > 0);
   $("#readingsListCount").textContent = `${items.length} of ${state.readings.length} reading${
     state.readings.length === 1 ? "" : "s"
   }`;
 }
-
-/* Loads the full readings batch once, updates the dashboard overview
- * count, populates the filter dropdowns and renders the Readings page
- * table. Called from loadAll() so the Readings page is instantly
- * populated whenever the user navigates to it (no extra fetch needed). */
 async function loadReadings() {
   const data = await apiFetch(ENDPOINTS.pvLog);
   state.readings = itemsOf(data);
@@ -659,7 +637,6 @@ async function loadProjectsView() {
       .join("")
   );
 }
-
 async function loadPackagesView() {
   const packages = itemsOf(await apiFetch(ENDPOINTS.packages));
   renderSystemsTable(
@@ -682,7 +659,6 @@ async function loadPackagesView() {
       .join("")
   );
 }
-
 async function loadPackageTypesView() {
   const types = itemsOf(await apiFetch(ENDPOINTS.packageTypes));
   renderSystemsTable(
@@ -701,7 +677,6 @@ async function loadPackageTypesView() {
       .join("")
   );
 }
-
 async function loadServiceItemsView() {
   const items = itemsOf(await apiFetch(ENDPOINTS.serviceItems));
   renderSystemsTable(
@@ -721,11 +696,9 @@ async function loadServiceItemsView() {
       .join("")
   );
 }
-
 function trackFlag(on) {
   return on ? "Yes" : "–";
 }
-
 async function loadSchedulesView() {
   const schedules = itemsOf(await apiFetch(ENDPOINTS.activeSchedules));
   renderSystemsTable(
@@ -753,7 +726,6 @@ async function loadSchedulesView() {
       .join("")
   );
 }
-
 async function loadPvAttributesView() {
   const attributes = itemsOf(await apiFetch(ENDPOINTS.pvAttributes));
   renderSystemsTable(
@@ -777,14 +749,297 @@ async function loadPvAttributesView() {
   );
 }
 
+/* ---------------- Firmware / device tracking system views ---------------- */
+async function loadManufacturersView() {
+  const items = itemsOf(await apiFetch(ENDPOINTS.manufacturers));
+  renderSystemsTable(
+    "Manufacturers",
+    "Equipment manufacturers and their contacts",
+    `<tr><th>ID</th><th>Name</th><th>Website</th><th>Contact 1</th><th>Eureka Responsible 1</th><th>Devices</th><th>Active</th></tr>`,
+    items
+      .map(
+        (m) => `
+      <tr>
+        <td>${escapeHtml(m.id)}</td>
+        <td>${escapeHtml(m.name)}</td>
+        <td>${
+          m.website
+            ? `<a href="${escapeHtml(m.website)}" target="_blank" rel="noopener">${escapeHtml(m.website)}</a>`
+            : "–"
+        }</td>
+        <td>${escapeHtml(m.contact1_name ?? "–")}</td>
+        <td>${escapeHtml(m.eureka_responsible_1_name ?? "–")}</td>
+        <td>${formatNumber(m.device_count)}</td>
+        <td>${m.active ? "Yes" : "No"}</td>
+      </tr>`
+      )
+      .join("")
+  );
+}
+
+async function loadDevicesView() {
+  const manufacturerId = elements.sysManufacturerFilter ? elements.sysManufacturerFilter.value : "";
+  const query = manufacturerId ? `?manufacturer_id=${encodeURIComponent(manufacturerId)}` : "";
+  const items = itemsOf(await apiFetch(ENDPOINTS.devices + query));
+  renderSystemsTable(
+    "Devices",
+    "Device catalog (manufacturer, model, hardware version)",
+    `<tr><th>ID</th><th>Manufacturer</th><th>Device Type</th><th>Name</th><th>Order Number</th><th>Hardware Version</th><th>Active</th></tr>`,
+    items
+      .map(
+        (d) => `
+      <tr>
+        <td>${escapeHtml(d.id)}</td>
+        <td>${escapeHtml(d.manufacturer_name)}</td>
+        <td>${escapeHtml(d.device_type_name)}</td>
+        <td>${escapeHtml(d.name)}</td>
+        <td>${escapeHtml(d.order_number ?? "–")}</td>
+        <td>${escapeHtml(d.hardware_version ?? "–")}</td>
+        <td>${d.active ? "Yes" : "No"}</td>
+      </tr>`
+      )
+      .join("")
+  );
+}
+
+async function loadDeviceTypesView() {
+  const items = itemsOf(await apiFetch(ENDPOINTS.deviceTypes));
+  renderSystemsTable(
+    "Device Types",
+    "Device categories (Device, Software)",
+    `<tr><th>ID</th><th>Name</th><th>Active</th></tr>`,
+    items
+      .map(
+        (t) => `<tr><td>${escapeHtml(t.id)}</td><td>${escapeHtml(t.name)}</td><td>${
+          t.active ? "Yes" : "No"
+        }</td></tr>`
+      )
+      .join("")
+  );
+}
+
+async function loadCheckTypesView() {
+  const items = itemsOf(await apiFetch(ENDPOINTS.checkTypes));
+  renderSystemsTable(
+    "Check Types",
+    "Firmware / EOL / EOS check categories",
+    `<tr><th>ID</th><th>Name</th></tr>`,
+    items.map((t) => `<tr><td>${escapeHtml(t.id)}</td><td>${escapeHtml(t.name)}</td></tr>`).join("")
+  );
+}
+
+async function loadVersionSourcesView() {
+  const items = itemsOf(await apiFetch(ENDPOINTS.versionSources));
+  renderSystemsTable(
+    "Version Sources",
+    "Where firmware / lifecycle findings came from",
+    `<tr><th>ID</th><th>Name</th><th>Active</th></tr>`,
+    items
+      .map(
+        (s) => `<tr><td>${escapeHtml(s.id)}</td><td>${escapeHtml(s.name)}</td><td>${
+          s.active ? "Yes" : "No"
+        }</td></tr>`
+      )
+      .join("")
+  );
+}
+
+async function loadTechniciansView() {
+  const items = itemsOf(await apiFetch(ENDPOINTS.technicians));
+  renderSystemsTable(
+    "Technicians",
+    "People who perform service, verification and confirmation work",
+    `<tr><th>ID</th><th>Name</th><th>Title</th><th>Company</th><th>Phone</th><th>Email</th><th>Active</th></tr>`,
+    items
+      .map(
+        (t) => `
+      <tr>
+        <td>${escapeHtml(t.id)}</td>
+        <td>${escapeHtml(t.name)}</td>
+        <td>${escapeHtml(t.title ?? "–")}</td>
+        <td>${escapeHtml(t.company_name ?? "–")}</td>
+        <td>${escapeHtml(t.phone ?? "–")}</td>
+        <td>${escapeHtml(t.email ?? "–")}</td>
+        <td>${t.active ? "Yes" : "No"}</td>
+      </tr>`
+      )
+      .join("")
+  );
+}
+
+async function loadVersionLogsView() {
+  const manufacturerId = elements.sysManufacturerFilter ? elements.sysManufacturerFilter.value : "";
+  const deviceId = elements.sysDeviceFilter ? elements.sysDeviceFilter.value : "";
+  const params = [];
+  if (manufacturerId) params.push(`manufacturer_id=${encodeURIComponent(manufacturerId)}`);
+  if (deviceId) params.push(`device_id=${encodeURIComponent(deviceId)}`);
+  const query = params.length ? `?${params.join("&")}` : "";
+  const items = itemsOf(await apiFetch(ENDPOINTS.versionLogs + query));
+  renderSystemsTable(
+    "Version Logs",
+    "Confirmed firmware / EOL / EOS records",
+    `<tr><th>ID</th><th>Manufacturer</th><th>Device</th><th>Check Type</th><th>Version</th><th>Release Date</th><th>EOL Date</th><th>EOS Date</th><th>Confirmed By</th><th>Latest</th></tr>`,
+    items
+      .map(
+        (v) => `
+      <tr>
+        <td>${escapeHtml(v.id)}</td>
+        <td>${escapeHtml(v.manufacturer_name)}</td>
+        <td>${escapeHtml(v.device_name)}</td>
+        <td>${escapeHtml(v.check_type_name)}</td>
+        <td>${escapeHtml(v.version ?? "–")}</td>
+        <td>${formatDate(v.release_date)}</td>
+        <td>${formatDate(v.eol_date)}</td>
+        <td>${formatDate(v.eos_date)}</td>
+        <td>${escapeHtml(v.confirmed_by_name ?? "–")}</td>
+        <td>${v.is_approved_latest ? "Yes" : "–"}</td>
+      </tr>`
+      )
+      .join("")
+  );
+}
+
+async function loadPackageDevicesView() {
+  const projectId = elements.sysProjectFilter ? elements.sysProjectFilter.value : "";
+  const packageId = elements.sysPackageFilter ? elements.sysPackageFilter.value : "";
+  const deviceTypeId = elements.sysDeviceTypeFilter ? elements.sysDeviceTypeFilter.value : "";
+  const params = [];
+  if (projectId) params.push(`project_id=${encodeURIComponent(projectId)}`);
+  if (packageId) params.push(`package_id=${encodeURIComponent(packageId)}`);
+  if (deviceTypeId) params.push(`device_type_id=${encodeURIComponent(deviceTypeId)}`);
+  const query = params.length ? `?${params.join("&")}` : "";
+  const items = itemsOf(await apiFetch(ENDPOINTS.packageDevices + query));
+  renderSystemsTable(
+    "Package Devices",
+    "Devices installed on packages, with confirmed firmware version",
+    `<tr><th>ID</th><th>Project</th><th>Package</th><th>Tag</th><th>Manufacturer</th><th>Device</th><th>Type</th><th>Serial</th><th>Firmware</th><th>Spare</th><th>Active</th></tr>`,
+    items
+      .map(
+        (pd) => `
+      <tr>
+        <td>${escapeHtml(pd.id)}</td>
+        <td>${escapeHtml(pd.project_name)}</td>
+        <td>${packageCell(pd.package_name, null, pd.package_tag)}</td>
+        <td>${escapeHtml(pd.tag_name)}</td>
+        <td>${escapeHtml(pd.manufacturer_name)}</td>
+        <td>${escapeHtml(pd.device_name)}</td>
+        <td>${escapeHtml(pd.device_type_name)}</td>
+        <td>${escapeHtml(pd.serial_number ?? "–")}</td>
+        <td>${escapeHtml(pd.firmware_version ?? "–")}${
+          pd.firmware_is_latest ? " <small>(latest)</small>" : ""
+        }</td>
+        <td>${pd.is_spare_part ? "Yes" : "–"}</td>
+        <td>${pd.active ? "Yes" : "No"}</td>
+      </tr>`
+      )
+      .join("")
+  );
+}
+
 const systemLoaders = {
   projects: loadProjectsView,
   packages: loadPackagesView,
   packagetypes: loadPackageTypesView,
   serviceitems: loadServiceItemsView,
   schedules: loadSchedulesView,
-  pvattributes: loadPvAttributesView
+  pvattributes: loadPvAttributesView,
+  // --- Firmware / device tracking ---
+  manufacturers: loadManufacturersView,
+  devices: loadDevicesView,
+  devicetypes: loadDeviceTypesView,
+  checktypes: loadCheckTypesView,
+  versionsources: loadVersionSourcesView,
+  versionlogs: loadVersionLogsView,
+  technicians: loadTechniciansView,
+  packagedevices: loadPackageDevicesView
 };
+
+/* Which of the 5 systems filter controls are visible per category. */
+const FILTER_VISIBILITY = {
+  devices: ["manufacturer"],
+  versionlogs: ["manufacturer", "device"],
+  packagedevices: ["project", "package", "devicetype"]
+};
+
+async function refreshDeviceFilterOptions() {
+  const manufacturerId = elements.sysManufacturerFilter.value;
+  const query = manufacturerId ? `?manufacturer_id=${encodeURIComponent(manufacturerId)}` : "";
+  const devices = itemsOf(await apiFetch(ENDPOINTS.devices + query));
+  const previousValue = elements.sysDeviceFilter.value;
+  elements.sysDeviceFilter.innerHTML =
+    '<option value="">All devices</option>' +
+    devices
+      .map(
+        (d) =>
+          `<option value="${d.id}">${escapeHtml(
+            `${d.manufacturer_name} - ${d.name} (${d.hardware_version})`
+          )}</option>`
+      )
+      .join("");
+  if ([...elements.sysDeviceFilter.options].some((o) => o.value === previousValue)) {
+    elements.sysDeviceFilter.value = previousValue;
+  }
+}
+
+async function refreshPackageFilterOptions() {
+  const projectId = elements.sysProjectFilter.value;
+  const query = projectId ? `?project_id=${encodeURIComponent(projectId)}` : "";
+  const packages = itemsOf(await apiFetch(ENDPOINTS.packages + query));
+  const previousValue = elements.sysPackageFilter.value;
+  elements.sysPackageFilter.innerHTML =
+    '<option value="">All packages</option>' +
+    packages
+      .map(
+        (p) =>
+          `<option value="${p.id}">${escapeHtml(
+            (p.project_name ? p.project_name + " · " : "") + p.name
+          )}</option>`
+      )
+      .join("");
+  if ([...elements.sysPackageFilter.options].some((o) => o.value === previousValue)) {
+    elements.sysPackageFilter.value = previousValue;
+  }
+}
+
+/* Shows/hides and (lazily) populates the Systems filter controls for
+ * the given category, before its loader is invoked. */
+async function populateSystemsFilters(categoryKey) {
+  const visible = FILTER_VISIBILITY[categoryKey] || [];
+  $$(".sys-filter").forEach((el) => {
+    el.classList.toggle("hidden", !visible.includes(el.dataset.filterKind));
+  });
+  if (elements.systemsFilterRow) {
+    elements.systemsFilterRow.classList.toggle("hidden", visible.length === 0);
+  }
+
+  if (visible.includes("manufacturer") && elements.sysManufacturerFilter.dataset.loaded !== "true") {
+    const manufacturers = itemsOf(await apiFetch(ENDPOINTS.manufacturers + "?active=true"));
+    elements.sysManufacturerFilter.innerHTML =
+      '<option value="">All manufacturers</option>' +
+      manufacturers.map((m) => `<option value="${m.id}">${escapeHtml(m.name)}</option>`).join("");
+    elements.sysManufacturerFilter.dataset.loaded = "true";
+  }
+  if (visible.includes("device")) {
+    await refreshDeviceFilterOptions();
+  }
+  if (visible.includes("project") && elements.sysProjectFilter.dataset.loaded !== "true") {
+    const projects = itemsOf(await apiFetch(ENDPOINTS.projects));
+    elements.sysProjectFilter.innerHTML =
+      '<option value="">All projects</option>' +
+      projects.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join("");
+    elements.sysProjectFilter.dataset.loaded = "true";
+  }
+  if (visible.includes("package")) {
+    await refreshPackageFilterOptions();
+  }
+  if (visible.includes("devicetype") && elements.sysDeviceTypeFilter.dataset.loaded !== "true") {
+    const types = itemsOf(await apiFetch(ENDPOINTS.deviceTypes));
+    elements.sysDeviceTypeFilter.innerHTML =
+      '<option value="">All device types</option>' +
+      types.map((t) => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join("");
+    elements.sysDeviceTypeFilter.dataset.loaded = "true";
+  }
+}
 
 async function showSystem(systemKey) {
   const loader = systemLoaders[systemKey];
@@ -795,6 +1050,7 @@ async function showSystem(systemKey) {
   const addPackageButton = $("#addPackageButton");
   if (addPackageButton) addPackageButton.classList.toggle("hidden", systemKey !== "packages");
   try {
+    await populateSystemsFilters(systemKey);
     await loader();
     setView("systems");
   } catch (error) {
@@ -802,11 +1058,20 @@ async function showSystem(systemKey) {
   }
 }
 
+async function reloadCurrentSystem() {
+  const loader = systemLoaders[state.currentSystem];
+  if (!loader) return;
+  try {
+    await loader();
+  } catch (error) {
+    showAlert(`Unable to load ${state.currentSystem}: ${error.message}`);
+  }
+}
+
 /* ---------------- Add Service Record (cascading) ---------------- */
 const recordModal = $("#recordModal");
 const recordForm = $("#recordForm");
 const recordCache = { packages: [], schedules: [] };
-
 async function openRecordModal() {
   recordForm.reset();
   $("#recDate").value = new Date().toISOString().slice(0, 10);
@@ -823,11 +1088,9 @@ async function openRecordModal() {
     showAlert(`Unable to open the record form: ${error.message}`);
   }
 }
-
 function closeRecordModal() {
   recordModal.classList.add("hidden");
 }
-
 async function onRecordProjectChange() {
   const projectId = Number($("#recProject").value);
   const scheduleSelect = $("#recSchedule");
@@ -839,7 +1102,6 @@ async function onRecordProjectChange() {
     showAlert(`Unable to load packages: ${error.message}`);
   }
 }
-
 async function onRecordPackageChange() {
   const packageId = Number($("#recPackage").value);
   const scheduleSelect = $("#recSchedule");
@@ -873,7 +1135,6 @@ async function onRecordPackageChange() {
     showAlert(`Unable to load schedules: ${error.message}`);
   }
 }
-
 async function submitRecord(event) {
   event.preventDefault();
   const saveButton = $("#recordSave");
@@ -912,7 +1173,6 @@ async function submitRecord(event) {
 /* ---------------- Add Package ---------------- */
 const packageModal = $("#packageModal");
 const packageForm = $("#packageForm");
-
 async function openPackageModal() {
   packageForm.reset();
   try {
@@ -930,11 +1190,9 @@ async function openPackageModal() {
     showAlert(`Unable to open the package form: ${error.message}`);
   }
 }
-
 function closePackageModal() {
   packageModal.classList.add("hidden");
 }
-
 async function submitPackage(event) {
   event.preventDefault();
   const saveButton = $("#packageSave");
@@ -968,17 +1226,14 @@ async function submitPackage(event) {
 /* ---------------- Add Package Type ---------------- */
 const packageTypeModal = $("#packageTypeModal");
 const packageTypeForm = $("#packageTypeForm");
-
 function openPackageTypeModal() {
   packageTypeForm.reset();
   packageTypeModal.classList.remove("hidden");
   $("#packageTypeName").focus();
 }
-
 function closePackageTypeModal() {
   packageTypeModal.classList.add("hidden");
 }
-
 async function submitPackageType(event) {
   event.preventDefault();
   const saveButton = $("#packageTypeSave");
@@ -1006,17 +1261,14 @@ async function submitPackageType(event) {
 /* ---------------- Add Project ---------------- */
 const projectModal = $("#projectModal");
 const projectForm = $("#projectForm");
-
 function openProjectModal() {
   projectForm.reset();
   projectModal.classList.remove("hidden");
   $("#projCode").focus();
 }
-
 function closeProjectModal() {
   projectModal.classList.add("hidden");
 }
-
 async function submitProject(event) {
   event.preventDefault();
   const saveButton = $("#projectSave");
@@ -1047,17 +1299,14 @@ async function submitProject(event) {
 /* ---------------- Add Service Item ---------------- */
 const serviceItemModal = $("#serviceItemModal");
 const serviceItemForm = $("#serviceItemForm");
-
 function openServiceItemModal() {
   serviceItemForm.reset();
   serviceItemModal.classList.remove("hidden");
   $("#svcItemName").focus();
 }
-
 function closeServiceItemModal() {
   serviceItemModal.classList.add("hidden");
 }
-
 async function submitServiceItem(event) {
   event.preventDefault();
   const saveButton = $("#serviceItemSave");
@@ -1089,7 +1338,6 @@ async function submitServiceItem(event) {
 const scheduleModal = $("#scheduleModal");
 const scheduleForm = $("#scheduleForm");
 const scheduleCache = { packages: [] };
-
 async function openScheduleModal() {
   scheduleForm.reset();
   $("#schedIntervalDays").value = 180;
@@ -1119,11 +1367,9 @@ async function openScheduleModal() {
     showAlert(`Unable to open the schedule form: ${error.message}`);
   }
 }
-
 function closeScheduleModal() {
   scheduleModal.classList.add("hidden");
 }
-
 async function onScheduleProjectChange() {
   const projectId = Number($("#schedProject").value);
   try {
@@ -1132,7 +1378,6 @@ async function onScheduleProjectChange() {
     showAlert(`Unable to load packages: ${error.message}`);
   }
 }
-
 async function submitSchedule(event) {
   event.preventDefault();
   const saveButton = $("#scheduleSave");
@@ -1194,7 +1439,6 @@ async function submitSchedule(event) {
 /* ---------------- Add Process Value (pv_attributes) ---------------- */
 const pvAttributeModal = $("#pvAttributeModal");
 const pvAttributeForm = $("#pvAttributeForm");
-
 async function openPvAttributeModal() {
   pvAttributeForm.reset();
   try {
@@ -1215,11 +1459,9 @@ async function openPvAttributeModal() {
     showAlert(`Unable to open the process value form: ${error.message}`);
   }
 }
-
 function closePvAttributeModal() {
   pvAttributeModal.classList.add("hidden");
 }
-
 async function submitPvAttribute(event) {
   event.preventDefault();
   const saveButton = $("#pvAttributeSave");
@@ -1254,7 +1496,6 @@ async function submitPvAttribute(event) {
 const readingModal = $("#readingModal");
 const readingForm = $("#readingForm");
 const readingCache = { packages: [], attributes: [] };
-
 async function openReadingModal() {
   readingForm.reset();
   $("#rdReadingDate").value = new Date().toISOString().slice(0, 10);
@@ -1272,18 +1513,15 @@ async function openReadingModal() {
     showAlert(`Unable to open the reading form: ${error.message}`);
   }
 }
-
 function closeReadingModal() {
   readingModal.classList.add("hidden");
 }
-
 function resetReadingValueField(message = "Select a process value first") {
   $("#rdValueField").innerHTML = `
     <label for="rdValueInput" id="rdValueLabel">Value <em>*</em></label>
     <input id="rdValueInput" type="text" disabled placeholder="${escapeHtml(message)}" />
   `;
 }
-
 async function onReadingProjectChange() {
   const projectId = Number($("#rdProject").value);
   const attributeSelect = $("#rdAttribute");
@@ -1296,7 +1534,6 @@ async function onReadingProjectChange() {
     showAlert(`Unable to load packages: ${error.message}`);
   }
 }
-
 async function onReadingPackageChange() {
   const packageId = Number($("#rdPackage").value);
   const attributeSelect = $("#rdAttribute");
@@ -1338,7 +1575,6 @@ async function onReadingPackageChange() {
     showAlert(`Unable to load process values: ${error.message}`);
   }
 }
-
 function onReadingAttributeChange() {
   const attributeId = Number($("#rdAttribute").value);
   if (!attributeId) {
@@ -1370,7 +1606,6 @@ function onReadingAttributeChange() {
     ${inputHtml}
   `;
 }
-
 async function submitReading(event) {
   event.preventDefault();
   const saveButton = $("#readingSave");
@@ -1379,7 +1614,6 @@ async function submitReading(event) {
   const readingDate = $("#rdReadingDate").value;
   const valueInput = $("#rdValueInput");
   const rawValue = valueInput ? valueInput.value : "";
-
   if (!packageId) {
     showAlert("Project and package are required.");
     return;
@@ -1396,7 +1630,6 @@ async function submitReading(event) {
     showAlert("A value is required.");
     return;
   }
-
   const attribute = readingCache.attributes.find((a) => Number(a.id) === attributeId);
   let value;
   if (attribute && attribute.data_type_name === "boolean") {
@@ -1414,7 +1647,6 @@ async function submitReading(event) {
   } else {
     value = rawValue;
   }
-
   const payload = {
     package_id: packageId,
     pv_attribute_id: attributeId,
@@ -1423,7 +1655,6 @@ async function submitReading(event) {
     performed_by: $("#rdPerformedBy").value.trim() || null,
     notes: $("#rdNotes").value.trim() || null
   };
-
   saveButton.disabled = true;
   saveButton.textContent = "Saving...";
   try {
@@ -1439,6 +1670,441 @@ async function submitReading(event) {
   }
 }
 
+/* ---------------- Add Manufacturer ---------------- */
+const manufacturerModal = $("#manufacturerModal");
+const manufacturerForm = $("#manufacturerForm");
+async function openManufacturerModal() {
+  manufacturerForm.reset();
+  try {
+    await Promise.all([
+      fillTechnicianSelect("#mfrContact1", "None"),
+      fillTechnicianSelect("#mfrContact2", "None"),
+      fillTechnicianSelect("#mfrEureka1", "None"),
+      fillTechnicianSelect("#mfrEureka2", "None")
+    ]);
+    manufacturerModal.classList.remove("hidden");
+    $("#mfrName").focus();
+  } catch (error) {
+    showAlert(`Unable to open the manufacturer form: ${error.message}`);
+  }
+}
+function closeManufacturerModal() {
+  manufacturerModal.classList.add("hidden");
+}
+async function submitManufacturer(event) {
+  event.preventDefault();
+  const saveButton = $("#manufacturerSave");
+  const payload = {
+    name: $("#mfrName").value.trim(),
+    website: $("#mfrWebsite").value.trim() || null,
+    notes: $("#mfrNotes").value.trim() || null,
+    contact1_id: $("#mfrContact1").value || null,
+    contact2_id: $("#mfrContact2").value || null,
+    eureka_responsible_1_id: $("#mfrEureka1").value || null,
+    eureka_responsible_2_id: $("#mfrEureka2").value || null
+  };
+  if (!payload.name) {
+    showAlert("Manufacturer name is required.");
+    return;
+  }
+  saveButton.disabled = true;
+  saveButton.textContent = "Saving...";
+  try {
+    await apiPost(ENDPOINTS.manufacturers, payload);
+    closeManufacturerModal();
+    showToast("Manufacturer added");
+    await reloadCurrentSystem();
+  } catch (error) {
+    showAlert(`Unable to save manufacturer: ${error.message}`);
+  } finally {
+    saveButton.disabled = false;
+    saveButton.textContent = "Save manufacturer";
+  }
+}
+
+/* ---------------- Add Device Type ---------------- */
+const deviceTypeModal = $("#deviceTypeModal");
+const deviceTypeForm = $("#deviceTypeForm");
+function openDeviceTypeModal() {
+  deviceTypeForm.reset();
+  deviceTypeModal.classList.remove("hidden");
+  $("#deviceTypeName").focus();
+}
+function closeDeviceTypeModal() {
+  deviceTypeModal.classList.add("hidden");
+}
+async function submitDeviceType(event) {
+  event.preventDefault();
+  const saveButton = $("#deviceTypeSave");
+  const payload = { name: $("#deviceTypeName").value.trim() };
+  if (!payload.name) {
+    showAlert("Device type name is required.");
+    return;
+  }
+  saveButton.disabled = true;
+  saveButton.textContent = "Saving...";
+  try {
+    await apiPost(ENDPOINTS.deviceTypes, payload);
+    closeDeviceTypeModal();
+    showToast("Device type added");
+    await reloadCurrentSystem();
+  } catch (error) {
+    showAlert(`Unable to save device type: ${error.message}`);
+  } finally {
+    saveButton.disabled = false;
+    saveButton.textContent = "Save device type";
+  }
+}
+
+/* ---------------- Add Check Type ---------------- */
+const checkTypeModal = $("#checkTypeModal");
+const checkTypeForm = $("#checkTypeForm");
+function openCheckTypeModal() {
+  checkTypeForm.reset();
+  checkTypeModal.classList.remove("hidden");
+  $("#checkTypeName").focus();
+}
+function closeCheckTypeModal() {
+  checkTypeModal.classList.add("hidden");
+}
+async function submitCheckType(event) {
+  event.preventDefault();
+  const saveButton = $("#checkTypeSave");
+  const payload = { name: $("#checkTypeName").value.trim() };
+  if (!payload.name) {
+    showAlert("Check type name is required.");
+    return;
+  }
+  saveButton.disabled = true;
+  saveButton.textContent = "Saving...";
+  try {
+    await apiPost(ENDPOINTS.checkTypes, payload);
+    closeCheckTypeModal();
+    showToast("Check type added");
+    await reloadCurrentSystem();
+  } catch (error) {
+    showAlert(`Unable to save check type: ${error.message}`);
+  } finally {
+    saveButton.disabled = false;
+    saveButton.textContent = "Save check type";
+  }
+}
+
+/* ---------------- Add Version Source ---------------- */
+const versionSourceModal = $("#versionSourceModal");
+const versionSourceForm = $("#versionSourceForm");
+function openVersionSourceModal() {
+  versionSourceForm.reset();
+  versionSourceModal.classList.remove("hidden");
+  $("#versionSourceName").focus();
+}
+function closeVersionSourceModal() {
+  versionSourceModal.classList.add("hidden");
+}
+async function submitVersionSource(event) {
+  event.preventDefault();
+  const saveButton = $("#versionSourceSave");
+  const payload = { name: $("#versionSourceName").value.trim() };
+  if (!payload.name) {
+    showAlert("Version source name is required.");
+    return;
+  }
+  saveButton.disabled = true;
+  saveButton.textContent = "Saving...";
+  try {
+    await apiPost(ENDPOINTS.versionSources, payload);
+    closeVersionSourceModal();
+    showToast("Version source added");
+    await reloadCurrentSystem();
+  } catch (error) {
+    showAlert(`Unable to save version source: ${error.message}`);
+  } finally {
+    saveButton.disabled = false;
+    saveButton.textContent = "Save version source";
+  }
+}
+
+/* ---------------- Add Technician ---------------- */
+const technicianModal = $("#technicianModal");
+const technicianForm = $("#technicianForm");
+function openTechnicianModal() {
+  technicianForm.reset();
+  technicianModal.classList.remove("hidden");
+  $("#techName").focus();
+}
+function closeTechnicianModal() {
+  technicianModal.classList.add("hidden");
+}
+async function submitTechnician(event) {
+  event.preventDefault();
+  const saveButton = $("#technicianSave");
+  const payload = {
+    name: $("#techName").value.trim(),
+    title: $("#techTitle").value.trim() || null,
+    company_name: $("#techCompany").value.trim() || null,
+    phone: $("#techPhone").value.trim() || null,
+    email: $("#techEmail").value.trim() || null,
+    notes: $("#techNotes").value.trim() || null
+  };
+  if (!payload.name) {
+    showAlert("Technician name is required.");
+    return;
+  }
+  saveButton.disabled = true;
+  saveButton.textContent = "Saving...";
+  try {
+    await apiPost(ENDPOINTS.technicians, payload);
+    closeTechnicianModal();
+    showToast("Technician added");
+    await reloadCurrentSystem();
+  } catch (error) {
+    showAlert(`Unable to save technician: ${error.message}`);
+  } finally {
+    saveButton.disabled = false;
+    saveButton.textContent = "Save technician";
+  }
+}
+
+/* ---------------- Add Device ---------------- */
+const deviceModal = $("#deviceModal");
+const deviceForm = $("#deviceForm");
+async function openDeviceModal() {
+  deviceForm.reset();
+  $("#devHardwareVersion").value = "X";
+  try {
+    const [manufacturers, deviceTypes] = await Promise.all([
+      apiFetch(ENDPOINTS.manufacturers + "?active=true"),
+      apiFetch(ENDPOINTS.deviceTypes + "?active=true")
+    ]);
+    $("#devManufacturer").innerHTML =
+      '<option value="">Select manufacturer</option>' +
+      itemsOf(manufacturers).map((m) => `<option value="${m.id}">${escapeHtml(m.name)}</option>`).join("");
+    $("#devDeviceType").innerHTML =
+      '<option value="">Select device type</option>' +
+      itemsOf(deviceTypes).map((t) => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join("");
+    deviceModal.classList.remove("hidden");
+  } catch (error) {
+    showAlert(`Unable to open the device form: ${error.message}`);
+  }
+}
+function closeDeviceModal() {
+  deviceModal.classList.add("hidden");
+}
+async function submitDevice(event) {
+  event.preventDefault();
+  const saveButton = $("#deviceSave");
+  const payload = {
+    manufacturer_id: Number($("#devManufacturer").value),
+    device_type_id: Number($("#devDeviceType").value),
+    name: $("#devName").value.trim(),
+    order_number: $("#devOrderNumber").value.trim() || null,
+    hardware_version: $("#devHardwareVersion").value.trim() || "X"
+  };
+  if (!payload.manufacturer_id || !payload.device_type_id || !payload.name) {
+    showAlert("Manufacturer, device type and name are required.");
+    return;
+  }
+  saveButton.disabled = true;
+  saveButton.textContent = "Saving...";
+  try {
+    await apiPost(ENDPOINTS.devices, payload);
+    closeDeviceModal();
+    showToast("Device added");
+    await reloadCurrentSystem();
+  } catch (error) {
+    showAlert(`Unable to save device: ${error.message}`);
+  } finally {
+    saveButton.disabled = false;
+    saveButton.textContent = "Save device";
+  }
+}
+
+/* ---------------- Add Version Log ---------------- */
+const versionLogModal = $("#versionLogModal");
+const versionLogForm = $("#versionLogForm");
+async function openVersionLogModal() {
+  versionLogForm.reset();
+  const latest = $("#vlIsApprovedLatest");
+  if (latest) latest.checked = false;
+  try {
+    const [devices, checkTypes] = await Promise.all([
+      apiFetch(ENDPOINTS.devices + "?active=true"),
+      apiFetch(ENDPOINTS.checkTypes),
+      fillTechnicianSelect("#vlConfirmedBy", "Not yet confirmed")
+    ]);
+    $("#vlDevice").innerHTML =
+      '<option value="">Select device</option>' +
+      itemsOf(devices)
+        .map(
+          (d) =>
+            `<option value="${d.id}">${escapeHtml(
+              `${d.manufacturer_name} - ${d.name} (${d.hardware_version})`
+            )}</option>`
+        )
+        .join("");
+    $("#vlCheckType").innerHTML =
+      '<option value="">Select check type</option>' +
+      itemsOf(checkTypes).map((t) => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join("");
+    versionLogModal.classList.remove("hidden");
+  } catch (error) {
+    showAlert(`Unable to open the version log form: ${error.message}`);
+  }
+}
+function closeVersionLogModal() {
+  versionLogModal.classList.add("hidden");
+}
+async function submitVersionLog(event) {
+  event.preventDefault();
+  const saveButton = $("#versionLogSave");
+  const payload = {
+    device_id: Number($("#vlDevice").value),
+    check_type_id: Number($("#vlCheckType").value),
+    version: $("#vlVersion").value.trim() || null,
+    release_date: $("#vlReleaseDate").value || null,
+    eos_date: $("#vlEosDate").value || null,
+    eol_date: $("#vlEolDate").value || null,
+    confirmed_by_id: $("#vlConfirmedBy").value || null,
+    confirm_date: $("#vlConfirmDate").value || null,
+    is_approved_latest: $("#vlIsApprovedLatest").checked,
+    notes: $("#vlNotes").value.trim() || null
+  };
+  if (!payload.device_id || !payload.check_type_id) {
+    showAlert("Device and check type are required.");
+    return;
+  }
+  saveButton.disabled = true;
+  saveButton.textContent = "Saving...";
+  try {
+    await apiPost(ENDPOINTS.versionLogs, payload);
+    closeVersionLogModal();
+    showToast("Version log added");
+    await reloadCurrentSystem();
+  } catch (error) {
+    showAlert(`Unable to save version log: ${error.message}`);
+  } finally {
+    saveButton.disabled = false;
+    saveButton.textContent = "Save version log";
+  }
+}
+
+/* ---------------- Add Package Device ---------------- */
+const packageDeviceModal = $("#packageDeviceModal");
+const packageDeviceForm = $("#packageDeviceForm");
+const packageDeviceCache = { packages: [], versionLogs: [] };
+async function openPackageDeviceModal() {
+  packageDeviceForm.reset();
+  const spare = $("#pdIsSparePart");
+  if (spare) spare.checked = false;
+  const packageSelect = $("#pdPackage");
+  packageSelect.innerHTML = '<option value="">Select project first</option>';
+  packageSelect.disabled = true;
+  resetFirmwareVersionLogField();
+  try {
+    await Promise.all([
+      fillProjectSelect("#pdProject"),
+      (async () => {
+        const devices = itemsOf(await apiFetch(ENDPOINTS.devices + "?active=true"));
+        $("#pdDevice").innerHTML =
+          '<option value="">Select device</option>' +
+          devices
+            .map(
+              (d) =>
+                `<option value="${d.id}">${escapeHtml(
+                  `${d.manufacturer_name} - ${d.name} (${d.hardware_version})`
+                )}</option>`
+            )
+            .join("");
+      })(),
+      fillTechnicianSelect("#pdInstalledBy", "None"),
+      fillTechnicianSelect("#pdFirmwareInstalledBy", "None")
+    ]);
+    packageDeviceModal.classList.remove("hidden");
+  } catch (error) {
+    showAlert(`Unable to open the package device form: ${error.message}`);
+  }
+}
+function closePackageDeviceModal() {
+  packageDeviceModal.classList.add("hidden");
+}
+function resetFirmwareVersionLogField(message = "Select a device first") {
+  const select = $("#pdFirmwareVersionLog");
+  if (!select) return;
+  select.innerHTML = `<option value="">${escapeHtml(message)}</option>`;
+  select.disabled = true;
+}
+async function onPackageDeviceProjectChange() {
+  const projectId = Number($("#pdProject").value);
+  try {
+    packageDeviceCache.packages = await fillPackagesForProject(projectId, "#pdPackage");
+  } catch (error) {
+    showAlert(`Unable to load packages: ${error.message}`);
+  }
+}
+async function onPackageDeviceDeviceChange() {
+  const deviceId = Number($("#pdDevice").value);
+  const select = $("#pdFirmwareVersionLog");
+  if (!deviceId) {
+    resetFirmwareVersionLogField();
+    return;
+  }
+  try {
+    const data = await apiFetch(`${ENDPOINTS.versionLogs}?device_id=${encodeURIComponent(deviceId)}`);
+    packageDeviceCache.versionLogs = itemsOf(data);
+    if (!packageDeviceCache.versionLogs.length) {
+      select.innerHTML = '<option value="">No confirmed versions for this device yet</option>';
+      select.disabled = true;
+      return;
+    }
+    select.innerHTML =
+      '<option value="">None</option>' +
+      packageDeviceCache.versionLogs
+        .map((v) => {
+          const label = `${v.check_type_name}: ${v.version ?? "(no version)"}${
+            v.is_approved_latest ? " — latest" : ""
+          }`;
+          return `<option value="${v.id}">${escapeHtml(label)}</option>`;
+        })
+        .join("");
+    select.disabled = false;
+  } catch (error) {
+    showAlert(`Unable to load version logs for this device: ${error.message}`);
+  }
+}
+async function submitPackageDevice(event) {
+  event.preventDefault();
+  const saveButton = $("#packageDeviceSave");
+  const payload = {
+    package_id: Number($("#pdPackage").value),
+    device_id: Number($("#pdDevice").value),
+    tag_name: $("#pdTagName").value.trim(),
+    serial_number: $("#pdSerialNumber").value.trim() || null,
+    is_spare_part: $("#pdIsSparePart").checked,
+    install_date: $("#pdInstallDate").value || null,
+    installed_by_id: $("#pdInstalledBy").value || null,
+    firmware_install_date: $("#pdFirmwareInstallDate").value || null,
+    firmware_installed_by_id: $("#pdFirmwareInstalledBy").value || null,
+    firmware_version_log_id: $("#pdFirmwareVersionLog").value || null,
+    notes: $("#pdNotes").value.trim() || null
+  };
+  if (!payload.package_id || !payload.device_id || !payload.tag_name) {
+    showAlert("Project, package, device and tag name are required.");
+    return;
+  }
+  saveButton.disabled = true;
+  saveButton.textContent = "Saving...";
+  try {
+    await apiPost(ENDPOINTS.packageDevices, payload);
+    closePackageDeviceModal();
+    showToast("Package device added");
+    await reloadCurrentSystem();
+  } catch (error) {
+    showAlert(`Unable to save package device: ${error.message}`);
+  } finally {
+    saveButton.disabled = false;
+    saveButton.textContent = "Save package device";
+  }
+}
+
 /* ---------------- Add button dispatcher (Systems categories only) ---------------- */
 // Packages uses its own separate button (#addPackageButton), toggled in showSystem.
 // Readings has its own dedicated page + #addReadingButton, so it is not part of
@@ -1451,7 +2117,15 @@ function updateAddButton(systemKey) {
     packagetypes: { label: "+ Add Package Type", open: openPackageTypeModal },
     serviceitems: { label: "+ Add Service Item", open: openServiceItemModal },
     schedules: { label: "+ Add Schedule", open: openScheduleModal },
-    pvattributes: { label: "+ Add Process Value", open: openPvAttributeModal }
+    pvattributes: { label: "+ Add Process Value", open: openPvAttributeModal },
+    manufacturers: { label: "+ Add Manufacturer", open: openManufacturerModal },
+    devices: { label: "+ Add Device", open: openDeviceModal },
+    devicetypes: { label: "+ Add Device Type", open: openDeviceTypeModal },
+    checktypes: { label: "+ Add Check Type", open: openCheckTypeModal },
+    versionsources: { label: "+ Add Version Source", open: openVersionSourceModal },
+    versionlogs: { label: "+ Add Version Log", open: openVersionLogModal },
+    technicians: { label: "+ Add Technician", open: openTechnicianModal },
+    packagedevices: { label: "+ Add Package Device", open: openPackageDeviceModal }
   };
   const cfg = map[systemKey];
   if (cfg) {
@@ -1496,7 +2170,6 @@ function bindEvents() {
   }
   elements.statusFilter.addEventListener("change", renderStatusTable);
   elements.statusSearch.addEventListener("input", renderStatusTable);
-
   elements.recentLimit.addEventListener("change", async () => {
     try {
       await loadRecent();
@@ -1509,15 +2182,38 @@ function bindEvents() {
   elements.recentPackageFilter.addEventListener("change", applyRecentFilters);
   elements.recentServiceItemFilter.addEventListener("change", applyRecentFilters);
   elements.recentSort.addEventListener("change", applyRecentFilters);
-
   // Readings page: dedicated Add button + filters/sort (client-side, no re-fetch)
   $("#addReadingButton").addEventListener("click", openReadingModal);
   elements.readingsProjectFilter.addEventListener("change", applyReadingsFilters);
   elements.readingsPackageFilter.addEventListener("change", applyReadingsFilters);
   elements.readingsAttributeFilter.addEventListener("change", applyReadingsFilters);
   elements.readingsSort.addEventListener("change", applyReadingsFilters);
-
   elements.refreshButton.addEventListener("click", () => loadAll({ notify: true }));
+
+  // Systems filters (manufacturer/device/project/package/device type)
+  if (elements.sysManufacturerFilter) {
+    elements.sysManufacturerFilter.addEventListener("change", async () => {
+      if (state.currentSystem === "versionlogs") {
+        await refreshDeviceFilterOptions();
+      }
+      await reloadCurrentSystem();
+    });
+  }
+  if (elements.sysDeviceFilter) {
+    elements.sysDeviceFilter.addEventListener("change", reloadCurrentSystem);
+  }
+  if (elements.sysProjectFilter) {
+    elements.sysProjectFilter.addEventListener("change", async () => {
+      await refreshPackageFilterOptions();
+      await reloadCurrentSystem();
+    });
+  }
+  if (elements.sysPackageFilter) {
+    elements.sysPackageFilter.addEventListener("change", reloadCurrentSystem);
+  }
+  if (elements.sysDeviceTypeFilter) {
+    elements.sysDeviceTypeFilter.addEventListener("change", reloadCurrentSystem);
+  }
 
   // Add Service Record modal
   $("#addRecordButton").addEventListener("click", openRecordModal);
@@ -1591,11 +2287,76 @@ function bindEvents() {
   $("#rdPackage").addEventListener("change", onReadingPackageChange);
   $("#rdAttribute").addEventListener("change", onReadingAttributeChange);
 
+  // Add Manufacturer modal
+  $("#manufacturerModalClose").addEventListener("click", closeManufacturerModal);
+  $("#manufacturerCancel").addEventListener("click", closeManufacturerModal);
+  manufacturerForm.addEventListener("submit", submitManufacturer);
+  manufacturerModal.addEventListener("click", (event) => {
+    if (event.target === manufacturerModal) closeManufacturerModal();
+  });
+
+  // Add Device Type modal
+  $("#deviceTypeModalClose").addEventListener("click", closeDeviceTypeModal);
+  $("#deviceTypeCancel").addEventListener("click", closeDeviceTypeModal);
+  deviceTypeForm.addEventListener("submit", submitDeviceType);
+  deviceTypeModal.addEventListener("click", (event) => {
+    if (event.target === deviceTypeModal) closeDeviceTypeModal();
+  });
+
+  // Add Check Type modal
+  $("#checkTypeModalClose").addEventListener("click", closeCheckTypeModal);
+  $("#checkTypeCancel").addEventListener("click", closeCheckTypeModal);
+  checkTypeForm.addEventListener("submit", submitCheckType);
+  checkTypeModal.addEventListener("click", (event) => {
+    if (event.target === checkTypeModal) closeCheckTypeModal();
+  });
+
+  // Add Version Source modal
+  $("#versionSourceModalClose").addEventListener("click", closeVersionSourceModal);
+  $("#versionSourceCancel").addEventListener("click", closeVersionSourceModal);
+  versionSourceForm.addEventListener("submit", submitVersionSource);
+  versionSourceModal.addEventListener("click", (event) => {
+    if (event.target === versionSourceModal) closeVersionSourceModal();
+  });
+
+  // Add Technician modal
+  $("#technicianModalClose").addEventListener("click", closeTechnicianModal);
+  $("#technicianCancel").addEventListener("click", closeTechnicianModal);
+  technicianForm.addEventListener("submit", submitTechnician);
+  technicianModal.addEventListener("click", (event) => {
+    if (event.target === technicianModal) closeTechnicianModal();
+  });
+
+  // Add Device modal
+  $("#deviceModalClose").addEventListener("click", closeDeviceModal);
+  $("#deviceCancel").addEventListener("click", closeDeviceModal);
+  deviceForm.addEventListener("submit", submitDevice);
+  deviceModal.addEventListener("click", (event) => {
+    if (event.target === deviceModal) closeDeviceModal();
+  });
+
+  // Add Version Log modal
+  $("#versionLogModalClose").addEventListener("click", closeVersionLogModal);
+  $("#versionLogCancel").addEventListener("click", closeVersionLogModal);
+  versionLogForm.addEventListener("submit", submitVersionLog);
+  versionLogModal.addEventListener("click", (event) => {
+    if (event.target === versionLogModal) closeVersionLogModal();
+  });
+
+  // Add Package Device modal
+  $("#packageDeviceModalClose").addEventListener("click", closePackageDeviceModal);
+  $("#packageDeviceCancel").addEventListener("click", closePackageDeviceModal);
+  packageDeviceForm.addEventListener("submit", submitPackageDevice);
+  packageDeviceModal.addEventListener("click", (event) => {
+    if (event.target === packageDeviceModal) closePackageDeviceModal();
+  });
+  $("#pdProject").addEventListener("change", onPackageDeviceProjectChange);
+  $("#pdDevice").addEventListener("change", onPackageDeviceDeviceChange);
+
   elements.menuButton.addEventListener("click", () =>
     elements.sidebar.classList.contains("open") ? closeSidebar() : openSidebar()
   );
   elements.sidebarBackdrop.addEventListener("click", closeSidebar);
-
   window.addEventListener("online", () => loadAll({ notify: true }));
   window.addEventListener("offline", () => {
     setConnection(false);

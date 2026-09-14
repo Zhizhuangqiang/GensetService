@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#0f766e" />
     <meta
       name="description"
-      content="Package maintenance schedules, due dates, and service history."
+      content="Package maintenance schedules, due dates, service history and firmware/device tracking."
     />
     <title>Package Service Manager</title>
     <link rel="manifest" href="/manifest.webmanifest" />
@@ -70,6 +70,8 @@
         </header>
         <main id="main-content" tabindex="-1">
           <div class="alert hidden" id="globalAlert" role="alert"></div>
+
+          <!-- ============================== Dashboard ============================== -->
           <section class="view" id="dashboardView" data-view-panel="dashboard">
             <div class="metric-grid" aria-label="Maintenance summary">
               <button class="metric-card danger" data-status-filter="OVERDUE" type="button">
@@ -178,6 +180,7 @@
             </section>
           </section>
 
+          <!-- ============================== Service Status ============================== -->
           <section class="view hidden" id="maintenanceView" data-view-panel="maintenance">
             <section class="panel">
               <div class="panel-header stack-mobile">
@@ -233,6 +236,7 @@
             </section>
           </section>
 
+          <!-- ============================== Recent Service ============================== -->
           <section class="view hidden" id="recentView" data-view-panel="recent">
             <section class="panel">
               <div class="panel-header stack-mobile">
@@ -255,8 +259,6 @@
                   </label>
                 </div>
               </div>
-
-              <!-- Client-side filters + sort, applied against the currently loaded batch -->
               <div class="filter-row" id="recentFilterRow">
                 <label>
                   <span>Project</span>
@@ -284,7 +286,6 @@
                   </select>
                 </label>
               </div>
-
               <div class="table-wrap">
                 <table>
                   <thead>
@@ -310,6 +311,7 @@
             </section>
           </section>
 
+          <!-- ============================== Readings ============================== -->
           <section class="view hidden" id="readingsView" data-view-panel="readings">
             <section class="panel">
               <div class="panel-header stack-mobile">
@@ -323,8 +325,6 @@
                   </button>
                 </div>
               </div>
-
-              <!-- Client-side filters + sort, applied against the currently loaded batch -->
               <div class="filter-row" id="readingsFilterRow">
                 <label>
                   <span>Project</span>
@@ -352,7 +352,6 @@
                   </select>
                 </label>
               </div>
-
               <div class="table-wrap">
                 <table>
                   <thead>
@@ -377,6 +376,7 @@
             </section>
           </section>
 
+          <!-- ============================== Systems ============================== -->
           <section class="view hidden" id="systemsView" data-view-panel="systems">
             <section class="panel">
               <div class="panel-header stack-mobile">
@@ -400,9 +400,50 @@
                       <option value="serviceitems">Service Items</option>
                       <option value="schedules">Active Schedules</option>
                       <option value="pvattributes">Process Values</option>
+                      <option value="manufacturers">Manufacturers</option>
+                      <option value="devices">Devices</option>
+                      <option value="devicetypes">Device Types</option>
+                      <option value="checktypes">Check Types</option>
+                      <option value="versionsources">Version Sources</option>
+                      <option value="versionlogs">Version Logs</option>
+                      <option value="technicians">Technicians</option>
+                      <option value="packagedevices">Package Devices</option>
                     </select>
                   </label>
                 </div>
+              </div>
+              <!-- Systems filters: shown/hidden per category by app.js (populateSystemsFilters) -->
+              <div class="filter-row hidden" id="systemsFilterRow">
+                <label class="sys-filter hidden" data-filter-kind="manufacturer">
+                  <span>Manufacturer</span>
+                  <select id="sysManufacturerFilter">
+                    <option value="">All manufacturers</option>
+                  </select>
+                </label>
+                <label class="sys-filter hidden" data-filter-kind="device">
+                  <span>Device</span>
+                  <select id="sysDeviceFilter">
+                    <option value="">All devices</option>
+                  </select>
+                </label>
+                <label class="sys-filter hidden" data-filter-kind="project">
+                  <span>Project</span>
+                  <select id="sysProjectFilter">
+                    <option value="">All projects</option>
+                  </select>
+                </label>
+                <label class="sys-filter hidden" data-filter-kind="package">
+                  <span>Package</span>
+                  <select id="sysPackageFilter">
+                    <option value="">All packages</option>
+                  </select>
+                </label>
+                <label class="sys-filter hidden" data-filter-kind="devicetype">
+                  <span>Device Type</span>
+                  <select id="sysDeviceTypeFilter">
+                    <option value="">All device types</option>
+                  </select>
+                </label>
               </div>
               <div class="table-wrap">
                 <table>
@@ -419,7 +460,8 @@
       </div>
     </div>
     <div class="sidebar-backdrop hidden" id="sidebarBackdrop"></div>
-    <!-- Add Service Record modal -->
+
+    <!-- ============================== Add Service Record modal ============================== -->
     <div
       class="modal-backdrop hidden"
       id="recordModal"
@@ -480,7 +522,8 @@
         </form>
       </div>
     </div>
-    <!-- Add Project modal -->
+
+    <!-- ============================== Add Project modal ============================== -->
     <div class="modal-backdrop hidden" id="projectModal" role="dialog"
          aria-modal="true" aria-labelledby="projectModalTitle">
       <div class="modal">
@@ -509,7 +552,8 @@
         </form>
       </div>
     </div>
-    <!-- Add Package modal -->
+
+    <!-- ============================== Add Package modal ============================== -->
     <div
       class="modal-backdrop hidden"
       id="packageModal"
@@ -560,7 +604,8 @@
         </form>
       </div>
     </div>
-    <!-- Add Package Type modal -->
+
+    <!-- ============================== Add Package Type modal ============================== -->
     <div
       class="modal-backdrop hidden"
       id="packageTypeModal"
@@ -594,7 +639,8 @@
         </form>
       </div>
     </div>
-    <!-- Add Service Item modal -->
+
+    <!-- ============================== Add Service Item modal ============================== -->
     <div
       class="modal-backdrop hidden"
       id="serviceItemModal"
@@ -629,7 +675,8 @@
         </form>
       </div>
     </div>
-    <!-- Add Schedule modal -->
+
+    <!-- ============================== Add Schedule modal ============================== -->
     <div
       class="modal-backdrop hidden"
       id="scheduleModal"
@@ -708,7 +755,8 @@
         </form>
       </div>
     </div>
-    <!-- Add Process Value modal -->
+
+    <!-- ============================== Add Process Value modal ============================== -->
     <div
       class="modal-backdrop hidden"
       id="pvAttributeModal"
@@ -759,7 +807,8 @@
         </form>
       </div>
     </div>
-    <!-- Add Reading modal -->
+
+    <!-- ============================== Add Reading modal ============================== -->
     <div
       class="modal-backdrop hidden"
       id="readingModal"
@@ -820,6 +869,437 @@
         </form>
       </div>
     </div>
+
+    <!-- ============================== Add Manufacturer modal ============================== -->
+    <div
+      class="modal-backdrop hidden"
+      id="manufacturerModal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="manufacturerModalTitle"
+    >
+      <div class="modal">
+        <div class="modal-header">
+          <h2 id="manufacturerModalTitle">Add Manufacturer</h2>
+          <button class="modal-close" id="manufacturerModalClose" type="button" aria-label="Close">
+            &times;
+          </button>
+        </div>
+        <form id="manufacturerForm">
+          <div class="modal-body">
+            <div class="form-grid">
+              <div class="field full">
+                <label for="mfrName">Name <em>*</em></label>
+                <input id="mfrName" type="text" required placeholder="e.g. Siemens" />
+              </div>
+              <div class="field full">
+                <label for="mfrWebsite">Website</label>
+                <input id="mfrWebsite" type="text" placeholder="https://..." />
+              </div>
+              <div class="field">
+                <label for="mfrContact1">Contact 1</label>
+                <select id="mfrContact1">
+                  <option value="">None</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="mfrContact2">Contact 2</label>
+                <select id="mfrContact2">
+                  <option value="">None</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="mfrEureka1">Eureka Responsible 1</label>
+                <select id="mfrEureka1">
+                  <option value="">None</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="mfrEureka2">Eureka Responsible 2</label>
+                <select id="mfrEureka2">
+                  <option value="">None</option>
+                </select>
+              </div>
+              <div class="field full">
+                <label for="mfrNotes">Notes</label>
+                <textarea id="mfrNotes" placeholder="Optional details"></textarea>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="button secondary" type="button" id="manufacturerCancel">Cancel</button>
+            <button class="button" type="submit" id="manufacturerSave">Save manufacturer</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ============================== Add Device Type modal ============================== -->
+    <div
+      class="modal-backdrop hidden"
+      id="deviceTypeModal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="deviceTypeModalTitle"
+    >
+      <div class="modal">
+        <div class="modal-header">
+          <h2 id="deviceTypeModalTitle">Add Device Type</h2>
+          <button class="modal-close" id="deviceTypeModalClose" type="button" aria-label="Close">
+            &times;
+          </button>
+        </div>
+        <form id="deviceTypeForm">
+          <div class="modal-body">
+            <div class="form-grid">
+              <div class="field full">
+                <label for="deviceTypeName">Name <em>*</em></label>
+                <input id="deviceTypeName" type="text" required placeholder="e.g. Device or Software" />
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="button secondary" type="button" id="deviceTypeCancel">Cancel</button>
+            <button class="button" type="submit" id="deviceTypeSave">Save device type</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ============================== Add Check Type modal ============================== -->
+    <div
+      class="modal-backdrop hidden"
+      id="checkTypeModal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="checkTypeModalTitle"
+    >
+      <div class="modal">
+        <div class="modal-header">
+          <h2 id="checkTypeModalTitle">Add Check Type</h2>
+          <button class="modal-close" id="checkTypeModalClose" type="button" aria-label="Close">
+            &times;
+          </button>
+        </div>
+        <form id="checkTypeForm">
+          <div class="modal-body">
+            <div class="form-grid">
+              <div class="field full">
+                <label for="checkTypeName">Name <em>*</em></label>
+                <input id="checkTypeName" type="text" required placeholder="e.g. Firmware, EOL, EOS" />
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="button secondary" type="button" id="checkTypeCancel">Cancel</button>
+            <button class="button" type="submit" id="checkTypeSave">Save check type</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ============================== Add Version Source modal ============================== -->
+    <div
+      class="modal-backdrop hidden"
+      id="versionSourceModal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="versionSourceModalTitle"
+    >
+      <div class="modal">
+        <div class="modal-header">
+          <h2 id="versionSourceModalTitle">Add Version Source</h2>
+          <button class="modal-close" id="versionSourceModalClose" type="button" aria-label="Close">
+            &times;
+          </button>
+        </div>
+        <form id="versionSourceForm">
+          <div class="modal-body">
+            <div class="form-grid">
+              <div class="field full">
+                <label for="versionSourceName">Name <em>*</em></label>
+                <input id="versionSourceName" type="text" required placeholder="e.g. AI-Website" />
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="button secondary" type="button" id="versionSourceCancel">Cancel</button>
+            <button class="button" type="submit" id="versionSourceSave">Save version source</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ============================== Add Technician modal ============================== -->
+    <div
+      class="modal-backdrop hidden"
+      id="technicianModal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="technicianModalTitle"
+    >
+      <div class="modal">
+        <div class="modal-header">
+          <h2 id="technicianModalTitle">Add Technician</h2>
+          <button class="modal-close" id="technicianModalClose" type="button" aria-label="Close">
+            &times;
+          </button>
+        </div>
+        <form id="technicianForm">
+          <div class="modal-body">
+            <div class="form-grid">
+              <div class="field full">
+                <label for="techName">Name <em>*</em></label>
+                <input id="techName" type="text" required placeholder="e.g. Sylvain Pharo" />
+              </div>
+              <div class="field">
+                <label for="techTitle">Title</label>
+                <input id="techTitle" type="text" placeholder="e.g. Field Engineer" />
+              </div>
+              <div class="field">
+                <label for="techCompany">Company</label>
+                <input id="techCompany" type="text" placeholder="e.g. Eureka Pumps AS" />
+              </div>
+              <div class="field">
+                <label for="techPhone">Phone</label>
+                <input id="techPhone" type="text" />
+              </div>
+              <div class="field">
+                <label for="techEmail">Email</label>
+                <input id="techEmail" type="email" />
+              </div>
+              <div class="field full">
+                <label for="techNotes">Notes</label>
+                <textarea id="techNotes" placeholder="Optional details"></textarea>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="button secondary" type="button" id="technicianCancel">Cancel</button>
+            <button class="button" type="submit" id="technicianSave">Save technician</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ============================== Add Device modal ============================== -->
+    <div
+      class="modal-backdrop hidden"
+      id="deviceModal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="deviceModalTitle"
+    >
+      <div class="modal">
+        <div class="modal-header">
+          <h2 id="deviceModalTitle">Add Device</h2>
+          <button class="modal-close" id="deviceModalClose" type="button" aria-label="Close">
+            &times;
+          </button>
+        </div>
+        <form id="deviceForm">
+          <div class="modal-body">
+            <div class="form-grid">
+              <div class="field">
+                <label for="devManufacturer">Manufacturer <em>*</em></label>
+                <select id="devManufacturer" required>
+                  <option value="">Select manufacturer</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="devDeviceType">Device Type <em>*</em></label>
+                <select id="devDeviceType" required>
+                  <option value="">Select device type</option>
+                </select>
+              </div>
+              <div class="field full">
+                <label for="devName">Name <em>*</em></label>
+                <input id="devName" type="text" required placeholder="e.g. PPU-3" />
+              </div>
+              <div class="field">
+                <label for="devOrderNumber">Order Number</label>
+                <input id="devOrderNumber" type="text" placeholder="e.g. 6ES7515-2RN03-0AB0" />
+              </div>
+              <div class="field">
+                <label for="devHardwareVersion">Hardware Version</label>
+                <input id="devHardwareVersion" type="text" placeholder="X" />
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="button secondary" type="button" id="deviceCancel">Cancel</button>
+            <button class="button" type="submit" id="deviceSave">Save device</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ============================== Add Version Log modal ============================== -->
+    <div
+      class="modal-backdrop hidden"
+      id="versionLogModal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="versionLogModalTitle"
+    >
+      <div class="modal">
+        <div class="modal-header">
+          <h2 id="versionLogModalTitle">Add Version Log</h2>
+          <button class="modal-close" id="versionLogModalClose" type="button" aria-label="Close">
+            &times;
+          </button>
+        </div>
+        <form id="versionLogForm">
+          <div class="modal-body">
+            <div class="form-grid">
+              <div class="field full">
+                <label for="vlDevice">Device <em>*</em></label>
+                <select id="vlDevice" required>
+                  <option value="">Select device</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="vlCheckType">Check Type <em>*</em></label>
+                <select id="vlCheckType" required>
+                  <option value="">Select check type</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="vlVersion">Version</label>
+                <input id="vlVersion" type="text" placeholder="e.g. 3.12.5" />
+              </div>
+              <div class="field">
+                <label for="vlReleaseDate">Release Date</label>
+                <input id="vlReleaseDate" type="date" />
+              </div>
+              <div class="field">
+                <label for="vlEolDate">EOL Date</label>
+                <input id="vlEolDate" type="date" />
+              </div>
+              <div class="field">
+                <label for="vlEosDate">EOS Date</label>
+                <input id="vlEosDate" type="date" />
+              </div>
+              <div class="field">
+                <label for="vlConfirmedBy">Confirmed By</label>
+                <select id="vlConfirmedBy">
+                  <option value="">Not yet confirmed</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="vlConfirmDate">Confirm Date</label>
+                <input id="vlConfirmDate" type="date" />
+              </div>
+              <div class="field full">
+                <label class="checkbox-field">
+                  <input id="vlIsApprovedLatest" type="checkbox" />
+                  <span>This is the currently approved / latest record for this device + check type</span>
+                </label>
+              </div>
+              <div class="field full">
+                <label for="vlNotes">Notes</label>
+                <textarea id="vlNotes" placeholder="Optional details"></textarea>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="button secondary" type="button" id="versionLogCancel">Cancel</button>
+            <button class="button" type="submit" id="versionLogSave">Save version log</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ============================== Add Package Device modal ============================== -->
+    <div
+      class="modal-backdrop hidden"
+      id="packageDeviceModal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="packageDeviceModalTitle"
+    >
+      <div class="modal">
+        <div class="modal-header">
+          <h2 id="packageDeviceModalTitle">Add Package Device</h2>
+          <button class="modal-close" id="packageDeviceModalClose" type="button" aria-label="Close">
+            &times;
+          </button>
+        </div>
+        <form id="packageDeviceForm">
+          <div class="modal-body">
+            <div class="form-grid">
+              <div class="field">
+                <label for="pdProject">Project <em>*</em></label>
+                <select id="pdProject" required>
+                  <option value="">Select project</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="pdPackage">Package <em>*</em></label>
+                <select id="pdPackage" required disabled>
+                  <option value="">Select project first</option>
+                </select>
+              </div>
+              <div class="field full">
+                <label for="pdDevice">Device <em>*</em></label>
+                <select id="pdDevice" required>
+                  <option value="">Select device</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="pdTagName">Tag Name <em>*</em></label>
+                <input id="pdTagName" type="text" required placeholder="e.g. 82EC101-A07" />
+              </div>
+              <div class="field">
+                <label for="pdSerialNumber">Serial Number</label>
+                <input id="pdSerialNumber" type="text" placeholder="XXXXXX" />
+              </div>
+              <div class="field full">
+                <label class="checkbox-field">
+                  <input id="pdIsSparePart" type="checkbox" />
+                  <span>This is a spare part (not the primary installed unit)</span>
+                </label>
+              </div>
+              <div class="field">
+                <label for="pdInstallDate">Install Date</label>
+                <input id="pdInstallDate" type="date" />
+              </div>
+              <div class="field">
+                <label for="pdInstalledBy">Installed By</label>
+                <select id="pdInstalledBy">
+                  <option value="">None</option>
+                </select>
+              </div>
+              <div class="field full">
+                <label for="pdFirmwareVersionLog">Confirmed Firmware Version</label>
+                <select id="pdFirmwareVersionLog" disabled>
+                  <option value="">Select a device first</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="pdFirmwareInstallDate">Firmware Install Date</label>
+                <input id="pdFirmwareInstallDate" type="date" />
+              </div>
+              <div class="field">
+                <label for="pdFirmwareInstalledBy">Firmware Installed By</label>
+                <select id="pdFirmwareInstalledBy">
+                  <option value="">None</option>
+                </select>
+              </div>
+              <div class="field full">
+                <label for="pdNotes">Notes</label>
+                <textarea id="pdNotes" placeholder="Optional details"></textarea>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="button secondary" type="button" id="packageDeviceCancel">Cancel</button>
+            <button class="button" type="submit" id="packageDeviceSave">Save package device</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
   </body>
 </html>
