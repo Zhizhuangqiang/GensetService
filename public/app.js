@@ -174,6 +174,13 @@ function formatPvValue(value, dataTypeName, unit) {
   return escapeHtml(String(value));
 }
 
+/* Renders a technician's name as a clickable link that opens the
+ * Contact Details popup. Returns "–" if no id/name is available. */
+function contactLink(id, name) {
+  if (!id || !name) return "–";
+  return `<button type="button" class="contact-link" data-tech-id="${id}">${escapeHtml(name)}</button>`;
+}
+
 /* Builds a sorted list of unique {id, name} options from a set of items,
  * given the property names that hold the id and the display name. */
 function uniqueOptions(items, idKey, nameKey) {
@@ -631,7 +638,7 @@ async function loadProjectsView() {
   renderSystemsTable(
     "Projects",
     "Project master data",
-    `<tr><th>ID</th><th>Code</th><th>Name</th><th>Active</th></tr>`,
+    `<tr><th>ID</th><th>Code</th><th>Name</th><th>Customer</th><th>Contact 1</th><th>Contact 2</th><th>Eureka Resp. 1</th><th>Eureka Resp. 2</th><th>Active</th></tr>`,
     projects
       .map(
         (p) => `
@@ -639,6 +646,11 @@ async function loadProjectsView() {
         <td>${escapeHtml(p.id)}</td>
         <td>${escapeHtml(p.code ?? "–")}</td>
         <td>${escapeHtml(p.name)}</td>
+        <td>${escapeHtml(p.customer ?? "–")}</td>
+        <td>${contactLink(p.customer_contact1_id, p.customer_contact1_name)}</td>
+        <td>${contactLink(p.customer_contact2_id, p.customer_contact2_name)}</td>
+        <td>${contactLink(p.eureka_responsible_1_id, p.eureka_responsible_1_name)}</td>
+        <td>${contactLink(p.eureka_responsible_2_id, p.eureka_responsible_2_name)}</td>
         <td>${p.active ? "Yes" : "No"}</td>
       </tr>`
       )
@@ -775,8 +787,8 @@ async function loadManufacturersView() {
             ? `<a href="${escapeHtml(m.website)}" target="_blank" rel="noopener">${escapeHtml(m.website)}</a>`
             : "–"
         }</td>
-        <td>${escapeHtml(m.contact1_name ?? "–")}</td>
-        <td>${escapeHtml(m.eureka_responsible_1_name ?? "–")}</td>
+        <td>${contactLink(m.contact1_id, m.contact1_name)}</td>
+        <td>${contactLink(m.eureka_responsible_1_id, m.eureka_responsible_1_name)}</td>
         <td>${formatNumber(m.device_count)}</td>
         <td>${m.active ? "Yes" : "No"}</td>
       </tr>`
@@ -899,7 +911,7 @@ async function loadVersionLogsView() {
         <td>${formatDate(v.release_date)}</td>
         <td>${formatDate(v.eol_date)}</td>
         <td>${formatDate(v.eos_date)}</td>
-        <td>${escapeHtml(v.confirmed_by_name ?? "–")}</td>
+        <td>${contactLink(v.confirmed_by_id, v.confirmed_by_name)}</td>
         <td>${v.is_approved_latest ? "Yes" : "–"}</td>
       </tr>`
       )
@@ -1074,6 +1086,51 @@ async function reloadCurrentSystem() {
   } catch (error) {
     showAlert(`Unable to load ${state.currentSystem}: ${error.message}`);
   }
+}
+
+/* ---------------- Contact Details popup (click a technician name) ---------------- */
+const contactModal = $("#contactModal");
+async function openContactModal(technicianId) {
+  const body = $("#contactModalBody");
+  body.innerHTML = '<div class="empty-state">Loading contact details...</div>';
+  contactModal.classList.remove("hidden");
+  try {
+    const tech = await apiFetch(`${ENDPOINTS.technicians}/${encodeURIComponent(technicianId)}`);
+    $("#contactModalTitle").textContent = tech.name || "Contact Details";
+    const rows = [
+      ["Title", tech.title],
+      ["Company", tech.company_name],
+      ["Phone", tech.phone],
+      ["Email", tech.email],
+      ["Notes", tech.notes]
+    ];
+    body.innerHTML = `
+      <dl class="contact-details">
+        ${rows
+          .map(
+            ([label, value]) => `
+          <div class="contact-details-row">
+            <dt>${escapeHtml(label)}</dt>
+            <dd>${
+              label === "Email" && value
+                ? `<a href="mailto:${escapeHtml(value)}">${escapeHtml(value)}</a>`
+                : label === "Phone" && value
+                ? `<a href="tel:${escapeHtml(value)}">${escapeHtml(value)}</a>`
+                : escapeHtml(value ?? "–")
+            }</dd>
+          </div>`
+          )
+          .join("")}
+      </dl>
+    `;
+  } catch (error) {
+    body.innerHTML = `<div class="empty-state">Unable to load contact details: ${escapeHtml(
+      error.message
+    )}</div>`;
+  }
+}
+function closeContactModal() {
+  contactModal.classList.add("hidden");
 }
 
 /* ---------------- Add Service Record (cascading) ---------------- */
@@ -1272,10 +1329,20 @@ async function submitPackageType(event) {
 /* ---------------- Add Project ---------------- */
 const projectModal = $("#projectModal");
 const projectForm = $("#projectForm");
-function openProjectModal() {
+async function openProjectModal() {
   projectForm.reset();
-  projectModal.classList.remove("hidden");
-  $("#projCode").focus();
+  try {
+    await Promise.all([
+      fillTechnicianSelect("#projContact1", "None"),
+      fillTechnicianSelect("#projContact2", "None"),
+      fillTechnicianSelect("#projEureka1", "None"),
+      fillTechnicianSelect("#projEureka2", "None")
+    ]);
+    projectModal.classList.remove("hidden");
+    $("#projCode").focus();
+  } catch (error) {
+    showAlert(`Unable to open the project form: ${error.message}`);
+  }
 }
 function closeProjectModal() {
   projectModal.classList.add("hidden");
@@ -1285,7 +1352,13 @@ async function submitProject(event) {
   const saveButton = $("#projectSave");
   const payload = {
     code: $("#projCode").value.trim(),
-    name: $("#projName").value.trim()
+    name: $("#projName").value.trim(),
+    customer: $("#projCustomer").value.trim() || null,
+    customer_contact1_id: $("#projContact1").value || null,
+    customer_contact2_id: $("#projContact2").value || null,
+    eureka_responsible_1_id: $("#projEureka1").value || null,
+    eureka_responsible_2_id: $("#projEureka2").value || null,
+    notes: $("#projNotes").value.trim() || null
   };
   if (!payload.code || !payload.name) {
     showAlert("Code and name are required.");
@@ -2228,6 +2301,19 @@ function bindEvents() {
   if (elements.sysDeviceTypeFilter) {
     elements.sysDeviceTypeFilter.addEventListener("change", reloadCurrentSystem);
   }
+
+  // Contact Details popup — event delegation, since rows are re-rendered dynamically
+  document.addEventListener("click", (event) => {
+    const trigger = event.target.closest(".contact-link");
+    if (trigger) {
+      const techId = trigger.dataset.techId;
+      if (techId) openContactModal(techId);
+    }
+  });
+  $("#contactModalClose").addEventListener("click", closeContactModal);
+  contactModal.addEventListener("click", (event) => {
+    if (event.target === contactModal) closeContactModal();
+  });
 
   // Add Service Record modal
   $("#addRecordButton").addEventListener("click", openRecordModal);
