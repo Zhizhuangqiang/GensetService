@@ -528,23 +528,56 @@
                   aria-label="Close">&times;</button>
         </div>
         <form id="projectForm">
-          <div class="modal-body">
-            <div class="form-grid">
-              <div class="field">
-                <label for="projCode">Code <em>*</em></label>
-                <input id="projCode" type="text" required placeholder="e.g. SRW" />
-              </div>
-              <div class="field">
-                <label for="projName">Name <em>*</em></label>
-                <input id="projName" type="text" required placeholder="e.g. Sunrise Wind" />
-              </div>
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button class="button ghost" type="button" id="projectCancel">Cancel</button>
-            <button class="button primary" type="submit" id="projectSave">Save project</button>
-          </div>
-        </form>
+  <div class="modal-body">
+    <div class="form-grid">
+      <div class="field">
+        <label for="projCode">Code <em>*</em></label>
+        <input id="projCode" type="text" required placeholder="e.g. SRW" />
+      </div>
+      <div class="field">
+        <label for="projName">Name <em>*</em></label>
+        <input id="projName" type="text" required placeholder="e.g. Sunrise Wind" />
+      </div>
+      <div class="field full">
+        <label for="projCustomer">Customer</label>
+        <input id="projCustomer" type="text" placeholder="e.g. Aker Solution AS" />
+      </div>
+      <div class="field">
+        <label for="projContact1">Customer Contact 1</label>
+        <select id="projContact1">
+          <option value="">None</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="projContact2">Customer Contact 2</label>
+        <select id="projContact2">
+          <option value="">None</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="projEureka1">Eureka Responsible 1</label>
+        <select id="projEureka1">
+          <option value="">None</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="projEureka2">Eureka Responsible 2</label>
+        <select id="projEureka2">
+          <option value="">None</option>
+        </select>
+      </div>
+      <div class="field full">
+        <label for="projNotes">Notes</label>
+        <textarea id="projNotes" placeholder="Optional details"></textarea>
+      </div>
+    </div>
+  </div>
+  <div class="modal-footer">
+    <button class="button ghost" type="button" id="projectCancel">Cancel</button>
+    <button class="button primary" type="submit" id="projectSave">Save project</button>
+  </div>
+</form>
+
       </div>
     </div>
     <!-- ============================== Add Package modal ============================== -->
