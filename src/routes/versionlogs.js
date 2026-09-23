@@ -166,8 +166,8 @@ router.post("/", async (req, res, next) => {
     const values = [deviceId, checkTypeId, version, releaseDate, confirmedById, confirmDate, isApprovedLatest, notes];
     if (eosDate !== null) { columns.push("eos_date"); values.push(eosDate); }
     if (eolDate !== null) { columns.push("eol_date"); values.push(eolDate); }
-
     const placeholders = columns.map((_, i) => `$${i + 1}`).join(", ");
+
     const result = await pool.query(
       `
       INSERT INTO public.version_logs (${columns.join(", ")})
@@ -188,17 +188,26 @@ router.post("/", async (req, res, next) => {
 /*
  * PUT /api/versionlogs/:id
  * Body: same as POST
+ *
+ * eos_date / eol_date: when omitted from the request body, the column
+ * is reset to its schema DEFAULT ('2099-12-31', meaning "not yet
+ * reached / unknown") using SQL's DEFAULT keyword in the SET clause,
+ * rather than hardcoding that literal here. This keeps the database
+ * the single source of truth for the default — if it's ever changed
+ * at the schema level, both POST and PUT automatically follow, with
+ * nothing to update in this file.
  */
 router.put("/:id", async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: "Invalid version log id" });
+
     const deviceId = parseId(req.body.device_id);
     const checkTypeId = parseId(req.body.check_type_id);
     const version = String(req.body.version ?? "").trim() || null;
     const releaseDate = optionalDate(req.body.release_date);
-    const eosDate = req.body.eos_date === "" || req.body.eos_date === undefined ? "2099-12-31" : req.body.eos_date;
-    const eolDate = req.body.eol_date === "" || req.body.eol_date === undefined ? "2099-12-31" : req.body.eol_date;
+    const eosDate = optionalDate(req.body.eos_date);
+    const eolDate = optionalDate(req.body.eol_date);
     const confirmedById = optionalTechId(req.body.confirmed_by_id);
     const confirmDate = optionalDate(req.body.confirm_date);
     const isApprovedLatest = req.body.is_approved_latest === true || req.body.is_approved_latest === "true";
@@ -218,16 +227,38 @@ router.put("/:id", async (req, res, next) => {
       return res.status(400).json({ error: "Invalid confirmed_by_id: technician does not exist" });
     }
 
+    const fixedColumns = [
+      "device_id", "check_type_id", "version", "release_date",
+      "confirmed_by_id", "confirm_date", "is_approved_latest", "notes"
+    ];
+    const values = [deviceId, checkTypeId, version, releaseDate, confirmedById, confirmDate, isApprovedLatest, notes];
+    const setParts = fixedColumns.map((col, i) => `${col} = $${i + 1}`);
+
+    if (eosDate !== null) {
+      values.push(eosDate);
+      setParts.push(`eos_date = $${values.length}`);
+    } else {
+      setParts.push("eos_date = DEFAULT");
+    }
+
+    if (eolDate !== null) {
+      values.push(eolDate);
+      setParts.push(`eol_date = $${values.length}`);
+    } else {
+      setParts.push("eol_date = DEFAULT");
+    }
+
+    values.push(id);
+    const idPlaceholder = values.length;
+
     const result = await pool.query(
       `
       UPDATE public.version_logs
-      SET device_id = $1, check_type_id = $2, version = $3, release_date = $4,
-          eos_date = $5, eol_date = $6, confirmed_by_id = $7, confirm_date = $8,
-          is_approved_latest = $9, notes = $10
-      WHERE id = $11
+      SET ${setParts.join(", ")}
+      WHERE id = $${idPlaceholder}
       RETURNING *
       `,
-      [deviceId, checkTypeId, version, releaseDate, eosDate, eolDate, confirmedById, confirmDate, isApprovedLatest, notes, id]
+      values
     );
     if (result.rowCount === 0) return res.status(404).json({ error: "Version log not found" });
     res.json(result.rows[0]);
