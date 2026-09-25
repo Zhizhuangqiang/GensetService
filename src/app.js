@@ -8,24 +8,28 @@ const pool = require("./db");
 const dashboardRouter        = require("./routes/dashboard");
 const projectsRouter         = require("./routes/projects");
 const packagesRouter         = require("./routes/packages");
-const packageTypesRouter     = require("./routes/packagetypes");
 const servicestatusRouter    = require("./routes/servicestatus");
-const serviceItemsRouter     = require("./routes/serviceitems");
 const schedulesRouter        = require("./routes/schedules");
 const serviceRecordsRouter   = require("./routes/servicerecords");
-const pvDataTypesRouter      = require("./routes/pvdatatypes");
 const pvAttributesRouter     = require("./routes/pvattributes");
 const pvLogRouter            = require("./routes/pvlog");
 const techniciansRouter      = require("./routes/technicians");
 
 // --- Firmware / device tracking routers ---
 const manufacturersRouter    = require("./routes/manufacturers");
-const deviceTypesRouter      = require("./routes/devicetypes");
-const checkTypesRouter       = require("./routes/checktypes");
-const versionSourcesRouter   = require("./routes/versionsources");
 const devicesRouter          = require("./routes/devices");
 const versionLogsRouter      = require("./routes/versionlogs");
 const packageDevicesRouter   = require("./routes/packagedevices");
+
+// --- Simple lookup-table routers (merged from 6 files into 1) ---
+const {
+  pvDataTypesRouter,
+  deviceTypesRouter,
+  checkTypesRouter,
+  versionSourcesRouter,
+  serviceItemsRouter,
+  packageTypesRouter
+} = require("./routes/lookups");
 
 const app = express();
 app.disable("x-powered-by");
@@ -64,6 +68,7 @@ function timingSafeEqual(a, b) {
 function basicAuth(req, res, next) {
   const expectedUser = process.env.BASIC_AUTH_USER;
   const expectedPass = process.env.BASIC_AUTH_PASS;
+
   if (!expectedUser || !expectedPass) {
     console.error(
       "BASIC_AUTH_USER / BASIC_AUTH_PASS are not set — refusing to serve requests."
@@ -72,8 +77,10 @@ function basicAuth(req, res, next) {
       error: "Server misconfigured: authentication credentials are not set."
     });
   }
+
   const header = req.headers.authorization || "";
   const [scheme, encoded] = header.split(" ");
+
   if (scheme === "Basic" && encoded) {
     const decoded = Buffer.from(encoded, "base64").toString("utf8");
     const separatorIndex = decoded.indexOf(":");
@@ -85,6 +92,7 @@ function basicAuth(req, res, next) {
       }
     }
   }
+
   res.set("WWW-Authenticate", 'Basic realm="Package Service Manager", charset="UTF-8"');
   return res.status(401).json({ error: "Authentication required" });
 }
@@ -140,7 +148,6 @@ app.use("/api/pvdatatypes",    pvDataTypesRouter);
 app.use("/api/pvattributes",   pvAttributesRouter);
 app.use("/api/pvlog",          pvLogRouter);
 app.use("/api/technicians",    techniciansRouter);
-
 app.use("/api/manufacturers",  manufacturersRouter);
 app.use("/api/devicetypes",    deviceTypesRouter);
 app.use("/api/checktypes",     checkTypesRouter);
