@@ -67,6 +67,14 @@ router.get("/", async (req, res, next) => {
       values.push(pvAttributeId);
       conditions.push(`pl.pv_attribute_id = $${values.length}`);
     }
+    if (req.query.reading_date !== undefined) {
+      const readingDate = String(req.query.reading_date).trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(readingDate)) {
+        return res.status(400).json({ error: "Invalid reading_date filter (expected YYYY-MM-DD)" });
+      }
+      values.push(readingDate);
+      conditions.push(`pl.reading_date = $${values.length}`);
+    }
     const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
     const result = await pool.query(
       `
@@ -188,6 +196,10 @@ router.get("/latest/:packageId", async (req, res, next) => {
  * "value" is the raw JS value (true/false, a number, or a string) and is
  * coerced to match the attribute's declared data_type before insert.
  * technician_id is optional and references public.technicians.
+ *
+ * If a reading already exists for this exact
+ * (package_id, pv_attribute_id, reading_date), it is UPDATED in place
+ * rather than creating a duplicate row (see uq_pv_log_package_attribute_date).
  */
 router.post("/", async (req, res, next) => {
   try {
@@ -233,6 +245,11 @@ router.post("/", async (req, res, next) => {
       INSERT INTO public.pv_log
         (package_id, pv_attribute_id, reading_date, value, technician_id, notes)
       VALUES ($1, $2, $3, $4::jsonb, $5, $6)
+      ON CONFLICT ON CONSTRAINT uq_pv_log_package_attribute_date
+      DO UPDATE SET
+        value = EXCLUDED.value,
+        technician_id = EXCLUDED.technician_id,
+        notes = EXCLUDED.notes
       RETURNING id, package_id, pv_attribute_id, reading_date, value, technician_id, notes, created_at
       `,
       [packageId, pvAttributeId, readingDate, JSON.stringify(coerced), technicianId, notes]
@@ -246,6 +263,145 @@ router.post("/", async (req, res, next) => {
       return res.status(400).json({ error: "Value type does not match the attribute's declared data type" });
     }
     next(error);
+  }
+});
+
+/*
+ * POST /api/pvlog/batch
+ * Body: {
+ *   package_id, reading_date, technician_id?, notes?,
+ *   readings: [ { pv_attribute_id, value }, ... ]
+ * }
+ *
+ * Saves an entire Daily Report in one transaction: every entry in
+ * "readings" is validated and coerced the same way as the single-reading
+ * POST above, then all rows are written together (all-or-nothing). Any
+ * (package_id, pv_attribute_id, reading_date) combination that already
+ * has a reading is UPDATED in place, so resubmitting a Daily Report for
+ * a date that was already logged corrects the existing values instead
+ * of creating duplicates.
+ *
+ * Entries with an empty/missing value are silently skipped (not every
+ * process value applies every day), rather than causing the whole
+ * batch to fail.
+ */
+router.post("/batch", async (req, res, next) => {
+  const client = await pool.connect();
+  try {
+    const packageId = parseId(req.body.package_id);
+    const readingDate = req.body.reading_date;
+    const notes = String(req.body.notes ?? "").trim() || null;
+    const readings = Array.isArray(req.body.readings) ? req.body.readings : [];
+
+    if (!packageId) {
+      return res.status(400).json({ error: "package_id is required" });
+    }
+    if (!readingDate || !/^\d{4}-\d{2}-\d{2}$/.test(String(readingDate))) {
+      return res.status(400).json({ error: "reading_date is required (expected YYYY-MM-DD)" });
+    }
+    if (!readings.length) {
+      return res.status(400).json({ error: "At least one reading is required" });
+    }
+
+    const technicianIdRaw = req.body.technician_id;
+    const technicianId = technicianIdRaw === undefined || technicianIdRaw === null || technicianIdRaw === ""
+      ? null
+      : Number.parseInt(technicianIdRaw, 10);
+    if (technicianId !== null && (!Number.isInteger(technicianId) || technicianId <= 0)) {
+      return res.status(400).json({ error: "Invalid technician_id" });
+    }
+
+    await client.query("BEGIN");
+
+    const packageCheck = await client.query("SELECT id FROM public.packages WHERE id = $1", [packageId]);
+    if (packageCheck.rowCount === 0) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: "Invalid package_id: package does not exist" });
+    }
+
+    if (technicianId !== null) {
+      const technicianCheck = await client.query("SELECT id FROM public.technicians WHERE id = $1", [technicianId]);
+      if (technicianCheck.rowCount === 0) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "Invalid technician_id: technician does not exist" });
+      }
+    }
+
+    const saved = [];
+    const skipped = [];
+
+    for (const entry of readings) {
+      const pvAttributeId = parseId(entry?.pv_attribute_id);
+      const rawValue = entry?.value;
+
+      if (!pvAttributeId) {
+        continue; // malformed entry, silently ignore
+      }
+      if (rawValue === undefined || rawValue === null || rawValue === "") {
+        skipped.push(pvAttributeId); // left blank on the form -- not an error
+        continue;
+      }
+
+      const attrResult = await client.query(
+        `
+        SELECT pa.id, dt.name AS data_type_name
+        FROM public.pv_attributes pa
+        JOIN public.pv_data_types dt ON dt.id = pa.data_type_id
+        WHERE pa.id = $1
+        `,
+        [pvAttributeId]
+      );
+      if (attrResult.rowCount === 0) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: `Invalid pv_attribute_id: ${pvAttributeId} does not exist` });
+      }
+      const dataTypeName = attrResult.rows[0].data_type_name;
+
+      const coerced = coerceValue(rawValue, dataTypeName);
+      if (coerced && typeof coerced === "object" && coerced.error) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({
+          error: `Attribute ${pvAttributeId}: ${coerced.error}`
+        });
+      }
+
+      const insertResult = await client.query(
+        `
+        INSERT INTO public.pv_log
+          (package_id, pv_attribute_id, reading_date, value, technician_id, notes)
+        VALUES ($1, $2, $3, $4::jsonb, $5, $6)
+        ON CONFLICT ON CONSTRAINT uq_pv_log_package_attribute_date
+        DO UPDATE SET
+          value = EXCLUDED.value,
+          technician_id = EXCLUDED.technician_id,
+          notes = EXCLUDED.notes
+        RETURNING id, pv_attribute_id
+        `,
+        [packageId, pvAttributeId, readingDate, JSON.stringify(coerced), technicianId, notes]
+      );
+      saved.push(insertResult.rows[0]);
+    }
+
+    await client.query("COMMIT");
+    res.status(201).json({
+      success: true,
+      package_id: packageId,
+      reading_date: readingDate,
+      saved_count: saved.length,
+      skipped_count: skipped.length,
+      items: saved
+    });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    if (error.code === "23503") {
+      return res.status(400).json({ error: "Invalid package_id, pv_attribute_id or technician_id" });
+    }
+    if (error.code === "23514") {
+      return res.status(400).json({ error: "One or more values do not match their attribute's declared data type" });
+    }
+    next(error);
+  } finally {
+    client.release();
   }
 });
 

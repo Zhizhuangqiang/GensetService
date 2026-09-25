@@ -16,6 +16,7 @@ const ENDPOINTS = {
   pvDataTypes: "/api/pvdatatypes",
   pvAttributes: "/api/pvattributes",
   pvLog: "/api/pvlog",
+  pvLogBatch: "/api/pvlog/batch",
   technicians: "/api/technicians",
   // --- Firmware / device tracking ---
   manufacturers: "/api/manufacturers",
@@ -25,6 +26,42 @@ const ENDPOINTS = {
   versionSources: "/api/versionsources",
   versionLogs: "/api/versionlogs",
   packageDevices: "/api/packagedevices"
+};
+
+/* Group membership for Daily Report layout — mirrors the paper daily
+ * checklist (Measurements / Checklist / Environmental). Any active
+ * pv_attribute not listed here falls into "Other" so nothing is ever
+ * silently hidden if a new attribute is added later. */
+const DAILY_REPORT_GROUPS = {
+  "Diesel Engine Running Hours": "A",
+  "Generator Load": "A",
+  "Air Compressor Running Hours": "A",
+  "Engine Lube Oil Pressure": "A",
+  "Engine HT Coolant Temperature": "A",
+  "Engine LT Coolant Temperature": "A",
+  "Container Ambient Temperature": "A",
+  "Urea Tank Temperature": "A",
+  "Engine Oil Top-Up Tank Level": "A",
+  "Urea Total Consumption": "A",
+  "Urea Tank Level": "A",
+  "Generator DE Vibration X": "A",
+  "Generator DE Vibration Y": "A",
+  "Generator NDE Vibration X": "A",
+  "Generator NDE Vibration Y": "A",
+  "Fuel Filter Differential Pressure": "A",
+  "Engine Oil Filter Differential Pressure": "A",
+  "Is Package Running": "B",
+  "SCR System Running": "B",
+  "Compressor Air Tank Drained": "B",
+  "Control Panel Inspected": "B",
+  "Engine Coolant Level Checked": "B",
+  "Engine Oil Level Checked (Standby Only)": "B",
+  "Engine Fuel Pre-Filter Cleaned": "B",
+  "Engine Walk-Around Inspection Completed": "B",
+  "Air Compressor Oil Level Checked": "B",
+  "External Temperature": "C",
+  "Wind Speed": "C",
+  "Wind Direction": "C"
 };
 
 const state = {
@@ -46,6 +83,10 @@ const state = {
     packageId: "",
     attributeId: "",
     sort: "date_desc"
+  },
+  dailyReport: {
+    attributes: [],
+    packages: []
   }
 };
 
@@ -89,6 +130,7 @@ const viewMetadata = {
   maintenance: ["Service Status", "Current maintenance condition for every active schedule"],
   recent: ["Recent Service", "Completed package maintenance records"],
   readings: ["Readings", "Logged process value readings"],
+  dailyreport: ["Daily Report", "Log a full day's measurements and checklist for a package"],
   systems: ["Systems", "Projects, packages, service items, schedules, process values and firmware tracking"]
 };
 
@@ -278,7 +320,7 @@ async function fillPackagesForProject(projectId, selectId) {
 
 /* Populate a <select> with technicians (used by the firmware tracker
  * forms — contacts, installed-by, confirmed-by — as well as the
- * "Performed By" field on Add Record and Add Reading). */
+ * "Performed By" field on Add Record, Add Reading and Daily Report). */
 async function fillTechnicianSelect(selectId, placeholder = "None") {
   const technicians = itemsOf(await apiFetch(ENDPOINTS.technicians + "?active=true"));
   $(selectId).innerHTML =
@@ -436,9 +478,6 @@ function hoursRemainingCell(item) {
 }
 
 /* ---------------- Recent Service: rows, filters, sort ---------------- */
-/* NOTE: "Performed By" is a technician_id foreign key end-to-end. The
- * API (dashboard.js /recent and servicerecords.js) returns the joined
- * name as "technician_name" — NOT "performed_by". */
 function recentRows(items) {
   return items
     .map(
@@ -529,9 +568,6 @@ async function loadRecent() {
 }
 
 /* ---------------- Readings: rows, filters, sort ---------------- */
-/* NOTE: "Performed By" is a technician_id foreign key end-to-end. The
- * API (pvlog.js) returns the joined name as "technician_name" — NOT
- * "performed_by". */
 function readingRows(items) {
   return items
     .map(
@@ -1765,6 +1801,239 @@ async function submitReading(event) {
   }
 }
 
+/* ---------------------------------------------------------------
+ * Daily Report — batch entry page
+ *
+ * Flow: pick Project -> Package -> Date (+ optional Operator), then
+ * one form renders every active process value grouped into
+ * Measurements / Checklist / Environmental / Other. Fields already
+ * logged for that package+date are pre-filled so re-opening the same
+ * day's report shows what was already entered. Submitting posts every
+ * filled-in field in one request to POST /api/pvlog/batch, which
+ * upserts each reading (updates in place if already logged, per
+ * uq_pv_log_package_attribute_date).
+ * ------------------------------------------------------------- */
+const dailyReportForm = $("#dailyReportForm");
+const dailyReportPackageCache = { packages: [] };
+
+function dailyReportGroupOf(attributeName) {
+  return DAILY_REPORT_GROUPS[attributeName] || "OTHER";
+}
+
+/* Renders one form field for a process value, restoring an existing
+ * value (from a previously-saved reading) when provided. */
+function renderDailyReportField(attribute, existingValue) {
+  const fieldId = `dr_attr_${attribute.id}`;
+  const unitSuffix = attribute.unit ? ` (${escapeHtml(attribute.unit)})` : "";
+  let inputHtml;
+
+  if (attribute.data_type_name === "boolean") {
+    const yesSelected = existingValue === true ? " selected" : "";
+    const noSelected = existingValue === false ? " selected" : "";
+    inputHtml = `
+      <select id="${fieldId}" data-attr-id="${attribute.id}" data-attr-type="boolean">
+        <option value="">Not checked</option>
+        <option value="true"${yesSelected}>Yes</option>
+        <option value="false"${noSelected}>No</option>
+      </select>
+    `;
+  } else if (attribute.data_type_name === "numeric") {
+    const valueAttr = existingValue !== undefined && existingValue !== null
+      ? ` value="${escapeHtml(existingValue)}"`
+      : "";
+    inputHtml = `<input id="${fieldId}" type="number" step="any" data-attr-id="${attribute.id}" data-attr-type="numeric"${valueAttr} placeholder="Not entered" />`;
+  } else {
+    const valueAttr = existingValue !== undefined && existingValue !== null
+      ? ` value="${escapeHtml(existingValue)}"`
+      : "";
+    inputHtml = `<input id="${fieldId}" type="text" data-attr-id="${attribute.id}" data-attr-type="text"${valueAttr} placeholder="Not entered" />`;
+  }
+
+  return `
+    <div class="field">
+      <label for="${fieldId}">${escapeHtml(attribute.name)}${unitSuffix}</label>
+      ${inputHtml}
+    </div>
+  `;
+}
+
+/* Loads and renders the full Daily Report form for the currently
+ * selected package + date, pre-filling any readings that already
+ * exist for that exact combination. */
+async function loadDailyReportForm() {
+  const packageId = Number($("#drPackage").value);
+  const readingDate = $("#drDate").value;
+  const form = dailyReportForm;
+  const empty = $("#dailyReportEmpty");
+  const loading = $("#dailyReportLoading");
+  const status = $("#dailyReportStatus");
+  status.textContent = "";
+
+  if (!packageId || !readingDate) {
+    form.classList.add("hidden");
+    empty.classList.remove("hidden");
+    return;
+  }
+
+  empty.classList.add("hidden");
+  loading.classList.remove("hidden");
+  form.classList.add("hidden");
+
+  try {
+    const [attributesData, existingData] = await Promise.all([
+      apiFetch(`${ENDPOINTS.pvAttributes}?active=true`),
+      apiFetch(`${ENDPOINTS.pvLog}?package_id=${encodeURIComponent(packageId)}&reading_date=${encodeURIComponent(readingDate)}`)
+    ]);
+
+    state.dailyReport.attributes = itemsOf(attributesData);
+    const existingByAttributeId = new Map();
+    itemsOf(existingData).forEach((reading) => {
+      existingByAttributeId.set(Number(reading.pv_attribute_id), reading.value);
+    });
+
+    const groups = { A: [], B: [], C: [], OTHER: [] };
+    state.dailyReport.attributes.forEach((attribute) => {
+      const groupKey = dailyReportGroupOf(attribute.name);
+      const existingValue = existingByAttributeId.has(Number(attribute.id))
+        ? existingByAttributeId.get(Number(attribute.id))
+        : undefined;
+      groups[groupKey].push(renderDailyReportField(attribute, existingValue));
+    });
+
+    $("#dailyReportGroupA").innerHTML = groups.A.join("") || '<p class="hint">No measurement process values defined yet.</p>';
+    $("#dailyReportGroupB").innerHTML = groups.B.join("") || '<p class="hint">No checklist process values defined yet.</p>';
+    $("#dailyReportGroupC").innerHTML = groups.C.join("") || '<p class="hint">No environmental process values defined yet.</p>';
+    const otherWrap = $("#dailyReportGroupOtherWrap");
+    if (groups.OTHER.length) {
+      $("#dailyReportGroupOther").innerHTML = groups.OTHER.join("");
+      otherWrap.classList.remove("hidden");
+    } else {
+      otherWrap.classList.add("hidden");
+    }
+
+    if (existingByAttributeId.size > 0) {
+      status.textContent = `A report already exists for this package and date (${existingByAttributeId.size} value${
+        existingByAttributeId.size === 1 ? "" : "s"
+      } logged) — editing will update it.`;
+    }
+
+    loading.classList.add("hidden");
+    form.classList.remove("hidden");
+  } catch (error) {
+    loading.classList.add("hidden");
+    empty.classList.remove("hidden");
+    empty.textContent = `Unable to load the Daily Report form: ${error.message}`;
+    showAlert(`Unable to load the Daily Report form: ${error.message}`);
+  }
+}
+
+async function onDailyReportProjectChange() {
+  const projectId = Number($("#drProject").value);
+  $("#dailyReportForm").classList.add("hidden");
+  $("#dailyReportEmpty").classList.remove("hidden");
+  try {
+    dailyReportPackageCache.packages = await fillPackagesForProject(projectId, "#drPackage");
+  } catch (error) {
+    showAlert(`Unable to load packages: ${error.message}`);
+  }
+}
+
+async function submitDailyReport(event) {
+  event.preventDefault();
+  const saveButton = $("#dailyReportSave");
+  const packageId = Number($("#drPackage").value);
+  const readingDate = $("#drDate").value;
+  const technicianId = $("#drTechnician").value || null;
+  const notes = $("#drNotes").value.trim() || null;
+
+  if (!packageId) {
+    showAlert("Project and package are required.");
+    return;
+  }
+  if (!readingDate) {
+    showAlert("Date is required.");
+    return;
+  }
+
+  const inputs = $$("[data-attr-id]", dailyReportForm);
+  const readings = [];
+  for (const input of inputs) {
+    const rawValue = input.value;
+    if (rawValue === "" || rawValue === undefined) continue; // left blank -- skip
+    const attributeId = Number(input.dataset.attrId);
+    const dataType = input.dataset.attrType;
+    let value;
+    if (dataType === "boolean") {
+      value = rawValue === "true";
+    } else if (dataType === "numeric") {
+      value = Number(rawValue);
+      if (!Number.isFinite(value)) {
+        showAlert(`Enter a valid number for ${escapeHtml(input.previousElementSibling ? "" : "")}one of the measurement fields.`);
+        return;
+      }
+    } else {
+      value = rawValue;
+    }
+    readings.push({ pv_attribute_id: attributeId, value });
+  }
+
+  if (!readings.length) {
+    showAlert("Enter at least one value before saving the Daily Report.");
+    return;
+  }
+
+  const payload = {
+    package_id: packageId,
+    reading_date: readingDate,
+    technician_id: technicianId,
+    notes,
+    readings
+  };
+
+  saveButton.disabled = true;
+  saveButton.textContent = "Saving...";
+  try {
+    const result = await apiPost(ENDPOINTS.pvLogBatch, payload);
+    showToast(`Daily Report saved (${result.saved_count} value${result.saved_count === 1 ? "" : "s"})`);
+    await loadDailyReportForm();
+    await loadReadingsCountQuiet();
+  } catch (error) {
+    showAlert(`Unable to save the Daily Report: ${error.message}`);
+  } finally {
+    saveButton.disabled = false;
+    saveButton.textContent = "Save Daily Report";
+  }
+}
+
+/* Refresh the Readings count on the Dashboard/Readings page without
+ * disturbing whatever view the user is currently on. Non-fatal if it
+ * fails (e.g. offline) — the Daily Report save itself already succeeded. */
+async function loadReadingsCountQuiet() {
+  try {
+    const data = await apiFetch(ENDPOINTS.pvLog);
+    const el = $("#readingsCount");
+    if (el) el.textContent = formatNumber(data.count ?? itemsOf(data).length);
+  } catch (error) {
+    console.warn("Unable to refresh readings count", error);
+  }
+}
+
+async function openDailyReportPage() {
+  $("#dailyReportForm").classList.add("hidden");
+  $("#dailyReportEmpty").classList.remove("hidden");
+  try {
+    await Promise.all([
+      fillProjectSelect("#drProject"),
+      fillTechnicianSelect("#drTechnician", "Select technician")
+    ]);
+    if (!$("#drDate").value) {
+      $("#drDate").value = new Date().toISOString().slice(0, 10);
+    }
+  } catch (error) {
+    showAlert(`Unable to open the Daily Report page: ${error.message}`);
+  }
+}
+
 /* ---------------- Add Manufacturer ---------------- */
 const manufacturerModal = $("#manufacturerModal");
 const manufacturerForm = $("#manufacturerForm");
@@ -2237,6 +2506,9 @@ function bindEvents() {
       const view = item.dataset.view;
       if (view === "systems") {
         showSystem(state.currentSystem || "projects");
+      } else if (view === "dailyreport") {
+        setView(view);
+        openDailyReportPage();
       } else {
         setView(view);
       }
@@ -2419,6 +2691,13 @@ function bindEvents() {
   });
   $("#pdProject").addEventListener("change", onPackageDeviceProjectChange);
   $("#pdDevice").addEventListener("change", onPackageDeviceDeviceChange);
+
+  // Daily Report page
+  $("#drProject").addEventListener("change", onDailyReportProjectChange);
+  $("#drPackage").addEventListener("change", loadDailyReportForm);
+  $("#drDate").addEventListener("change", loadDailyReportForm);
+  dailyReportForm.addEventListener("submit", submitDailyReport);
+
   elements.menuButton.addEventListener("click", () =>
     elements.sidebar.classList.contains("open") ? closeSidebar() : openSidebar()
   );
