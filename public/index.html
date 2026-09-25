@@ -37,6 +37,9 @@
           <button class="nav-item" data-view="readings" type="button">
             <span aria-hidden="true">⏱</span> Readings
           </button>
+          <button class="nav-item" data-view="dailyreport" type="button">
+            <span aria-hidden="true">▤</span> Daily Report
+          </button>
           <button class="nav-item" data-view="systems" type="button">
             <span aria-hidden="true">⚙</span> Systems
           </button>
@@ -370,6 +373,75 @@
               <div class="table-footer">
                 <span id="readingsListCount">0 readings</span>
               </div>
+            </section>
+          </section>
+          <!-- ============================== Daily Report ============================== -->
+          <section class="view hidden" id="dailyReportView" data-view-panel="dailyreport">
+            <section class="panel">
+              <div class="panel-header stack-mobile">
+                <div>
+                  <h2>Daily Report</h2>
+                  <p>Log a full day's measurements and checklist for a package in one go</p>
+                </div>
+              </div>
+              <div class="form-grid" id="dailyReportSelectors">
+                <div class="field">
+                  <label for="drProject">Project <em>*</em></label>
+                  <select id="drProject" required>
+                    <option value="">Select project</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="drPackage">Package <em>*</em></label>
+                  <select id="drPackage" required disabled>
+                    <option value="">Select project first</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="drDate">Date <em>*</em></label>
+                  <input id="drDate" type="date" required />
+                </div>
+                <div class="field">
+                  <label for="drTechnician">Operator</label>
+                  <select id="drTechnician">
+                    <option value="">Select technician</option>
+                  </select>
+                </div>
+              </div>
+              <div class="empty-state hidden" id="dailyReportEmpty">
+                Select a project, package and date above to begin.
+              </div>
+              <div class="empty-state hidden" id="dailyReportLoading">
+                Loading process values...
+              </div>
+              <form id="dailyReportForm" class="hidden">
+                <div class="dr-group">
+                  <h3>Measurements</h3>
+                  <div class="form-grid" id="dailyReportGroupA"></div>
+                </div>
+                <div class="dr-group">
+                  <h3>Checklist</h3>
+                  <div class="form-grid" id="dailyReportGroupB"></div>
+                </div>
+                <div class="dr-group">
+                  <h3>Environmental</h3>
+                  <div class="form-grid" id="dailyReportGroupC"></div>
+                </div>
+                <div class="dr-group hidden" id="dailyReportGroupOtherWrap">
+                  <h3>Other</h3>
+                  <div class="form-grid" id="dailyReportGroupOther"></div>
+                </div>
+                <div class="form-grid">
+                  <div class="field full">
+                    <label for="drNotes">Notes</label>
+                    <textarea id="drNotes" placeholder="Optional notes for this report"></textarea>
+                  </div>
+                </div>
+                <div class="panel-actions" style="justify-content: flex-end; margin-top: 16px;">
+                  <span id="dailyReportStatus" class="table-footer" style="margin-right:auto;"></span>
+                  <button class="button" type="submit" id="dailyReportSave">Save Daily Report</button>
+                </div>
+              </form>
             </section>
           </section>
           <!-- ============================== Systems ============================== -->
