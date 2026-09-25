@@ -65,48 +65,26 @@ router.get("/:id", async (req, res, next) => {
  * POST /api/packagetypes
  * Body: { name }
  *
- * Automatically seeds a "Running Hours" pv_attributes entry for the
- * new type, so every package type supports running-hours logging
- * from the moment it is created.
+ * NOTE: this no longer auto-creates a "Running Hours" pv_attribute for
+ * the new package type. If running-hours tracking is needed, add that
+ * process value manually via the Add Process Value form/route.
  */
 router.post("/", async (req, res, next) => {
-  const client = await pool.connect();
   try {
     const name = String(req.body.name || "").trim();
     if (!name) {
       return res.status(400).json({ error: "name is required" });
     }
-
-    await client.query("BEGIN");
-
-    const inserted = await client.query(
+    const result = await pool.query(
       `INSERT INTO public.package_types (name, active)
        VALUES ($1, TRUE)
        RETURNING id, name, active, created_at, updated_at`,
       [name]
     );
-
-    const numericTypeId = await client.query(
-      `SELECT id FROM public.pv_data_types WHERE name = 'numeric'`
-    );
-    if (numericTypeId.rowCount > 0) {
-      await client.query(
-        `INSERT INTO public.pv_attributes
-           (package_type_id, name, data_type_id, unit, description, active)
-         VALUES ($1, 'Running Hours', $2, 'hours',
-                 'Cumulative running/operating hours', TRUE)`,
-        [inserted.rows[0].id, numericTypeId.rows[0].id]
-      );
-    }
-
-    await client.query("COMMIT");
-    res.status(201).json(inserted.rows[0]);
+    res.status(201).json(result.rows[0]);
   } catch (error) {
-    await client.query("ROLLBACK");
     if (handleDuplicate(error, res)) return;
     next(error);
-  } finally {
-    client.release();
   }
 });
 
@@ -125,7 +103,6 @@ router.put("/:id", async (req, res, next) => {
       return res.status(400).json({ error: "name is required" });
     }
     const active = req.body.active;
-
     const result = await pool.query(
       `UPDATE public.package_types
        SET name = $1, active = $2, updated_at = CURRENT_TIMESTAMP
