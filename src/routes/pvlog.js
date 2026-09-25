@@ -17,7 +17,7 @@ function parseId(value) {
 async function findAttribute(pvAttributeId) {
   const result = await pool.query(
     `
-    SELECT pa.id, pa.package_type_id, dt.name AS data_type_name, pa.active
+    SELECT pa.id, dt.name AS data_type_name, pa.active
     FROM public.pv_attributes pa
     JOIN public.pv_data_types dt ON dt.id = pa.data_type_id
     WHERE pa.id = $1
@@ -55,23 +55,19 @@ router.get("/", async (req, res, next) => {
   try {
     const conditions = [];
     const values = [];
-
     if (req.query.package_id !== undefined) {
       const packageId = parseId(req.query.package_id);
       if (!packageId) return res.status(400).json({ error: "Invalid package_id filter" });
       values.push(packageId);
       conditions.push(`pl.package_id = $${values.length}`);
     }
-
     if (req.query.pv_attribute_id !== undefined) {
       const pvAttributeId = parseId(req.query.pv_attribute_id);
       if (!pvAttributeId) return res.status(400).json({ error: "Invalid pv_attribute_id filter" });
       values.push(pvAttributeId);
       conditions.push(`pl.pv_attribute_id = $${values.length}`);
     }
-
     const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
-
     const result = await pool.query(
       `
       SELECT
@@ -103,7 +99,6 @@ router.get("/", async (req, res, next) => {
       `,
       values
     );
-
     res.json({ count: result.rowCount, items: result.rows });
   } catch (error) {
     next(error);
@@ -117,7 +112,6 @@ router.get("/:id", async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: "Invalid reading id" });
-
     const result = await pool.query(
       `
       SELECT
@@ -149,14 +143,16 @@ router.get("/:id", async (req, res, next) => {
 
 /*
  * GET /api/pvlog/latest/:packageId
- * Returns the most recent reading for every attribute applicable to
- * the package's type (useful for a package's "current status" view).
+ * Returns the most recent reading for every active process value
+ * (pv_attributes is a global catalog, not scoped by package type),
+ * for this specific package — useful for a package's "current status"
+ * view. Attributes with no reading yet for this package still appear,
+ * with null reading fields.
  */
 router.get("/latest/:packageId", async (req, res, next) => {
   try {
     const packageId = parseId(req.params.packageId);
     if (!packageId) return res.status(400).json({ error: "Invalid package id" });
-
     const result = await pool.query(
       `
       SELECT DISTINCT ON (pa.id)
@@ -171,16 +167,14 @@ router.get("/latest/:packageId", async (req, res, next) => {
         t.name AS technician_name
       FROM public.pv_attributes pa
       JOIN public.pv_data_types dt ON dt.id = pa.data_type_id
-      JOIN public.packages pkg     ON pkg.package_type_id = pa.package_type_id
       LEFT JOIN public.pv_log pl
-        ON pl.pv_attribute_id = pa.id AND pl.package_id = pkg.id
+        ON pl.pv_attribute_id = pa.id AND pl.package_id = $1
       LEFT JOIN public.technicians t ON t.id = pl.technician_id
-      WHERE pkg.id = $1 AND pa.active = TRUE
+      WHERE pa.active = TRUE
       ORDER BY pa.id, pl.reading_date DESC, pl.id DESC
       `,
       [packageId]
     );
-
     res.json({ count: result.rowCount, items: result.rows });
   } catch (error) {
     next(error);
@@ -201,7 +195,6 @@ router.post("/", async (req, res, next) => {
     const pvAttributeId = parseId(req.body.pv_attribute_id);
     const readingDate = req.body.reading_date || new Date().toISOString().slice(0, 10);
     const notes = String(req.body.notes ?? "").trim() || null;
-
     if (!packageId) {
       return res.status(400).json({ error: "package_id is required" });
     }
@@ -211,7 +204,6 @@ router.post("/", async (req, res, next) => {
     if (req.body.value === undefined || req.body.value === null || req.body.value === "") {
       return res.status(400).json({ error: "value is required" });
     }
-
     const technicianIdRaw = req.body.technician_id;
     const technicianId = technicianIdRaw === undefined || technicianIdRaw === null || technicianIdRaw === ""
       ? null
@@ -228,17 +220,14 @@ router.post("/", async (req, res, next) => {
         return res.status(400).json({ error: "Invalid technician_id: technician does not exist" });
       }
     }
-
     const attribute = await findAttribute(pvAttributeId);
     if (!attribute) {
       return res.status(400).json({ error: "Invalid pv_attribute_id: attribute does not exist" });
     }
-
     const coerced = coerceValue(req.body.value, attribute.data_type_name);
     if (coerced && typeof coerced === "object" && coerced.error) {
       return res.status(400).json({ error: coerced.error });
     }
-
     const result = await pool.query(
       `
       INSERT INTO public.pv_log
@@ -248,7 +237,6 @@ router.post("/", async (req, res, next) => {
       `,
       [packageId, pvAttributeId, readingDate, JSON.stringify(coerced), technicianId, notes]
     );
-
     res.status(201).json(result.rows[0]);
   } catch (error) {
     if (error.code === "23503") {
@@ -268,7 +256,6 @@ router.delete("/:id", async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: "Invalid reading id" });
-
     const result = await pool.query(
       "DELETE FROM public.pv_log WHERE id = $1 RETURNING id",
       [id]

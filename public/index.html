@@ -357,6 +357,7 @@
                       <th>Package</th>
                       <th>Process Value</th>
                       <th>Value</th>
+                      <th>Performed By</th>
                       <th>Recorded</th>
                     </tr>
                   </thead>
@@ -407,7 +408,7 @@
                   </label>
                 </div>
               </div>
-              <!-- Systems filters: shown/hidden per category by app.js (populateSystemsFilters) -->
+              <!-- Systems filters: shown/hidden per category by client.js (populateSystemsFilters) -->
               <div class="filter-row hidden" id="systemsFilterRow">
                 <label class="sys-filter hidden" data-filter-kind="manufacturer">
                   <span>Manufacturer</span>
@@ -577,7 +578,6 @@
     <button class="button primary" type="submit" id="projectSave">Save project</button>
   </div>
 </form>
-
       </div>
     </div>
     <!-- ============================== Add Package modal ============================== -->
@@ -654,9 +654,6 @@
                 <input id="packageTypeName" type="text" required placeholder="e.g. Pump" />
               </div>
             </div>
-            <p class="hint">
-              A "Running Hours" process value is created automatically for every new package type.
-            </p>
           </div>
           <div class="modal-footer">
             <button class="button secondary" type="button" id="packageTypeCancel">Cancel</button>
@@ -779,7 +776,8 @@
         </form>
       </div>
     </div>
-    <!-- ============================== Add Process Value modal ============================== -->
+    <!-- ============================== Add Process Value modal ==============================
+         pv_attributes are global (not tied to a package type). -->
     <div
       class="modal-backdrop hidden"
       id="pvAttributeModal"
@@ -797,12 +795,6 @@
         <form id="pvAttributeForm">
           <div class="modal-body">
             <div class="form-grid">
-              <div class="field">
-                <label for="pvAttrPackageType">Package Type <em>*</em></label>
-                <select id="pvAttrPackageType" required>
-                  <option value="">Select package type</option>
-                </select>
-              </div>
               <div class="field">
                 <label for="pvAttrDataType">Data Type <em>*</em></label>
                 <select id="pvAttrDataType" required>

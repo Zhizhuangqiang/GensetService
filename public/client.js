@@ -293,14 +293,17 @@ function setConnection(isOnline) {
   elements.connectionDot.classList.toggle("offline", !isOnline);
   elements.connectionText.textContent = isOnline ? "API connected" : "API unavailable";
 }
+
 function showAlert(message) {
   elements.alert.textContent = message;
   elements.alert.classList.remove("hidden");
 }
+
 function clearAlert() {
   elements.alert.classList.add("hidden");
   elements.alert.textContent = "";
 }
+
 let toastTimer;
 function showToast(message) {
   clearTimeout(toastTimer);
@@ -308,6 +311,7 @@ function showToast(message) {
   elements.toast.classList.remove("hidden");
   toastTimer = setTimeout(() => elements.toast.classList.add("hidden"), 3200);
 }
+
 function setView(view) {
   state.currentView = view;
   $$("[data-view-panel]").forEach((panel) =>
@@ -321,11 +325,13 @@ function setView(view) {
   elements.pageSubtitle.textContent = subtitle;
   closeSidebar();
 }
+
 function openSidebar() {
   elements.sidebar.classList.add("open");
   elements.sidebarBackdrop.classList.remove("hidden");
   elements.menuButton.setAttribute("aria-expanded", "true");
 }
+
 function closeSidebar() {
   elements.sidebar.classList.remove("open");
   elements.sidebarBackdrop.classList.add("hidden");
@@ -351,6 +357,7 @@ function renderDashboard(summary) {
     if (el) el.textContent = formatNumber(value);
   });
 }
+
 function renderNextDue() {
   const host = $("#nextDueList");
   const items = state.statuses
@@ -378,6 +385,7 @@ function renderNextDue() {
     )
     .join("");
 }
+
 function renderStatusTable() {
   const status = elements.statusFilter.value;
   const search = elements.statusSearch.value.trim().toLowerCase();
@@ -415,6 +423,7 @@ function renderStatusTable() {
   empty.classList.toggle("hidden", items.length > 0);
   $("#statusCount").textContent = `${items.length} schedule${items.length === 1 ? "" : "s"}`;
 }
+
 /* Renders the "Hours" column cell for the Service Status table. */
 function hoursRemainingCell(item) {
   if (!item.track_running_hours || item.interval_running_hours == null) return "–";
@@ -447,6 +456,7 @@ function recentRows(items) {
     )
     .join("");
 }
+
 function renderDashboardRecent() {
   const dashboardBody = $("#dashboardRecentBody");
   dashboardBody.innerHTML = state.recent
@@ -466,6 +476,7 @@ function renderDashboardRecent() {
     .join("");
   $("#dashboardRecentEmpty").classList.toggle("hidden", state.recent.length > 0);
 }
+
 function populateRecentFilterOptions() {
   refreshFilterOptions(
     elements.recentProjectFilter,
@@ -483,6 +494,7 @@ function populateRecentFilterOptions() {
     uniqueOptions(state.recent, "service_item_id", "service_item_name")
   );
 }
+
 function applyRecentFilters() {
   const projectId = elements.recentProjectFilter.value;
   const packageId = elements.recentPackageFilter.value;
@@ -506,6 +518,7 @@ function applyRecentFilters() {
     state.recent.length === 1 ? "" : "s"
   }`;
 }
+
 async function loadRecent() {
   const limit = Number(elements.recentLimit.value || 20);
   const data = await apiFetch(ENDPOINTS.recent(limit));
@@ -536,6 +549,7 @@ function readingRows(items) {
     )
     .join("");
 }
+
 function populateReadingsFilterOptions() {
   refreshFilterOptions(
     elements.readingsProjectFilter,
@@ -553,6 +567,7 @@ function populateReadingsFilterOptions() {
     uniqueOptions(state.readings, "pv_attribute_id", "attribute_name")
   );
 }
+
 function applyReadingsFilters() {
   const projectId = elements.readingsProjectFilter.value;
   const packageId = elements.readingsPackageFilter.value;
@@ -576,6 +591,7 @@ function applyReadingsFilters() {
     state.readings.length === 1 ? "" : "s"
   }`;
 }
+
 async function loadReadings() {
   const data = await apiFetch(ENDPOINTS.pvLog);
   state.readings = itemsOf(data);
@@ -657,6 +673,7 @@ async function loadProjectsView() {
       .join("")
   );
 }
+
 async function loadPackagesView() {
   const packages = itemsOf(await apiFetch(ENDPOINTS.packages));
   renderSystemsTable(
@@ -679,6 +696,7 @@ async function loadPackagesView() {
       .join("")
   );
 }
+
 async function loadPackageTypesView() {
   const types = itemsOf(await apiFetch(ENDPOINTS.packageTypes));
   renderSystemsTable(
@@ -697,6 +715,7 @@ async function loadPackageTypesView() {
       .join("")
   );
 }
+
 async function loadServiceItemsView() {
   const items = itemsOf(await apiFetch(ENDPOINTS.serviceItems));
   renderSystemsTable(
@@ -716,9 +735,11 @@ async function loadServiceItemsView() {
       .join("")
   );
 }
+
 function trackFlag(on) {
   return on ? "Yes" : "–";
 }
+
 async function loadSchedulesView() {
   const schedules = itemsOf(await apiFetch(ENDPOINTS.activeSchedules));
   renderSystemsTable(
@@ -746,18 +767,18 @@ async function loadSchedulesView() {
       .join("")
   );
 }
+
 async function loadPvAttributesView() {
   const attributes = itemsOf(await apiFetch(ENDPOINTS.pvAttributes));
   renderSystemsTable(
     "Process Values",
-    "Loggable readings defined per package type",
-    `<tr><th>ID</th><th>Package Type</th><th>Name</th><th>Data Type</th><th>Unit</th><th>Description</th><th>Active</th></tr>`,
+    "Loggable process values (available to any package)",
+    `<tr><th>ID</th><th>Name</th><th>Data Type</th><th>Unit</th><th>Description</th><th>Active</th></tr>`,
     attributes
       .map(
         (a) => `
       <tr>
         <td>${escapeHtml(a.id)}</td>
-        <td>${escapeHtml(a.package_type_name ?? "–")}</td>
         <td>${escapeHtml(a.name)}</td>
         <td>${escapeHtml(a.data_type_name ?? "–")}</td>
         <td>${escapeHtml(a.unit ?? "–")}</td>
@@ -1031,7 +1052,6 @@ async function populateSystemsFilters(categoryKey) {
   if (elements.systemsFilterRow) {
     elements.systemsFilterRow.classList.toggle("hidden", visible.length === 0);
   }
-
   if (visible.includes("manufacturer") && elements.sysManufacturerFilter.dataset.loaded !== "true") {
     const manufacturers = itemsOf(await apiFetch(ENDPOINTS.manufacturers + "?active=true"));
     elements.sysManufacturerFilter.innerHTML =
@@ -1315,7 +1335,7 @@ async function submitPackageType(event) {
   try {
     await apiPost(ENDPOINTS.packageTypes, payload);
     closePackageTypeModal();
-    showToast("Package type added — Running Hours tracking configured automatically");
+    showToast("Package type added");
     await loadPackageTypesView();
     await loadAll({ notify: false });
   } catch (error) {
@@ -1520,19 +1540,14 @@ async function submitSchedule(event) {
   }
 }
 
-/* ---------------- Add Process Value (pv_attributes) ---------------- */
+/* ---------------- Add Process Value (pv_attributes) ----------------
+ * pv_attributes are global — no package type selection needed. */
 const pvAttributeModal = $("#pvAttributeModal");
 const pvAttributeForm = $("#pvAttributeForm");
 async function openPvAttributeModal() {
   pvAttributeForm.reset();
   try {
-    const [types, dataTypes] = await Promise.all([
-      apiFetch(ENDPOINTS.packageTypes + "?active=true"),
-      apiFetch(ENDPOINTS.pvDataTypes)
-    ]);
-    $("#pvAttrPackageType").innerHTML =
-      '<option value="">Select package type</option>' +
-      itemsOf(types).map((t) => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join("");
+    const dataTypes = await apiFetch(ENDPOINTS.pvDataTypes);
     $("#pvAttrDataType").innerHTML =
       '<option value="">Select data type</option>' +
       itemsOf(dataTypes)
@@ -1550,14 +1565,13 @@ async function submitPvAttribute(event) {
   event.preventDefault();
   const saveButton = $("#pvAttributeSave");
   const payload = {
-    package_type_id: Number($("#pvAttrPackageType").value),
     data_type_id: Number($("#pvAttrDataType").value),
     name: $("#pvAttrName").value.trim(),
     unit: $("#pvAttrUnit").value.trim() || null,
     description: $("#pvAttrDescription").value.trim() || null
   };
-  if (!payload.package_type_id || !payload.data_type_id || !payload.name) {
-    showAlert("Package type, data type and name are required.");
+  if (!payload.data_type_id || !payload.name) {
+    showAlert("Data type and name are required.");
     return;
   }
   saveButton.disabled = true;
@@ -1576,7 +1590,10 @@ async function submitPvAttribute(event) {
   }
 }
 
-/* ---------------- Add Reading (cascading, dynamic value input) ---------------- */
+/* ---------------- Add Reading (cascading, dynamic value input) ----------------
+ * pv_attributes are global, so the process-value dropdown no longer
+ * depends on which package's type was selected — every active process
+ * value is available regardless of package. */
 const readingModal = $("#readingModal");
 const readingForm = $("#readingForm");
 const readingCache = { packages: [], attributes: [] };
@@ -1630,20 +1647,11 @@ async function onReadingPackageChange() {
     attributeSelect.disabled = true;
     return;
   }
-  const selectedPackage = readingCache.packages.find((pkg) => Number(pkg.id) === packageId);
-  const packageTypeId = selectedPackage ? selectedPackage.package_type_id : null;
-  if (!packageTypeId) {
-    attributeSelect.innerHTML = '<option value="">Unable to determine package type</option>';
-    attributeSelect.disabled = true;
-    return;
-  }
   try {
-    const data = await apiFetch(
-      `${ENDPOINTS.pvAttributes}?package_type_id=${encodeURIComponent(packageTypeId)}&active=true`
-    );
+    const data = await apiFetch(`${ENDPOINTS.pvAttributes}?active=true`);
     readingCache.attributes = itemsOf(data);
     if (!readingCache.attributes.length) {
-      attributeSelect.innerHTML = '<option value="">No process values defined for this package type</option>';
+      attributeSelect.innerHTML = '<option value="">No process values defined yet</option>';
       attributeSelect.disabled = true;
       return;
     }
@@ -2193,9 +2201,6 @@ async function submitPackageDevice(event) {
 }
 
 /* ---------------- Add button dispatcher (Systems categories only) ---------------- */
-// Packages uses its own separate button (#addPackageButton), toggled in showSystem.
-// Readings has its own dedicated page + #addReadingButton, so it is not part of
-// this Systems "+ Add" dispatcher.
 function updateAddButton(systemKey) {
   const btn = $("#addSystemButton");
   if (!btn) return;
@@ -2264,20 +2269,16 @@ function bindEvents() {
       showAlert(`Unable to load recent records: ${error.message}`);
     }
   });
-  // Recent Service filters + sort (client-side, no re-fetch)
   elements.recentProjectFilter.addEventListener("change", applyRecentFilters);
   elements.recentPackageFilter.addEventListener("change", applyRecentFilters);
   elements.recentServiceItemFilter.addEventListener("change", applyRecentFilters);
   elements.recentSort.addEventListener("change", applyRecentFilters);
-  // Readings page: dedicated Add button + filters/sort (client-side, no re-fetch)
   $("#addReadingButton").addEventListener("click", openReadingModal);
   elements.readingsProjectFilter.addEventListener("change", applyReadingsFilters);
   elements.readingsPackageFilter.addEventListener("change", applyReadingsFilters);
   elements.readingsAttributeFilter.addEventListener("change", applyReadingsFilters);
   elements.readingsSort.addEventListener("change", applyReadingsFilters);
   elements.refreshButton.addEventListener("click", () => loadAll({ notify: true }));
-
-  // Systems filters (manufacturer/device/project/package/device type)
   if (elements.sysManufacturerFilter) {
     elements.sysManufacturerFilter.addEventListener("change", async () => {
       if (state.currentSystem === "versionlogs") {
@@ -2301,8 +2302,6 @@ function bindEvents() {
   if (elements.sysDeviceTypeFilter) {
     elements.sysDeviceTypeFilter.addEventListener("change", reloadCurrentSystem);
   }
-
-  // Contact Details popup — event delegation, since rows are re-rendered dynamically
   document.addEventListener("click", (event) => {
     const trigger = event.target.closest(".contact-link");
     if (trigger) {
@@ -2314,8 +2313,6 @@ function bindEvents() {
   contactModal.addEventListener("click", (event) => {
     if (event.target === contactModal) closeContactModal();
   });
-
-  // Add Service Record modal
   $("#addRecordButton").addEventListener("click", openRecordModal);
   $("#recordModalClose").addEventListener("click", closeRecordModal);
   $("#recordCancel").addEventListener("click", closeRecordModal);
@@ -2325,16 +2322,12 @@ function bindEvents() {
   });
   $("#recProject").addEventListener("change", onRecordProjectChange);
   $("#recPackage").addEventListener("change", onRecordPackageChange);
-
-  // Add Project modal
   $("#projectModalClose").addEventListener("click", closeProjectModal);
   $("#projectCancel").addEventListener("click", closeProjectModal);
   projectForm.addEventListener("submit", submitProject);
   projectModal.addEventListener("click", (event) => {
     if (event.target === projectModal) closeProjectModal();
   });
-
-  // Add Package modal
   $("#addPackageButton").addEventListener("click", openPackageModal);
   $("#packageModalClose").addEventListener("click", closePackageModal);
   $("#packageCancel").addEventListener("click", closePackageModal);
@@ -2342,24 +2335,18 @@ function bindEvents() {
   packageModal.addEventListener("click", (event) => {
     if (event.target === packageModal) closePackageModal();
   });
-
-  // Add Package Type modal
   $("#packageTypeModalClose").addEventListener("click", closePackageTypeModal);
   $("#packageTypeCancel").addEventListener("click", closePackageTypeModal);
   packageTypeForm.addEventListener("submit", submitPackageType);
   packageTypeModal.addEventListener("click", (event) => {
     if (event.target === packageTypeModal) closePackageTypeModal();
   });
-
-  // Add Service Item modal
   $("#serviceItemModalClose").addEventListener("click", closeServiceItemModal);
   $("#serviceItemCancel").addEventListener("click", closeServiceItemModal);
   serviceItemForm.addEventListener("submit", submitServiceItem);
   serviceItemModal.addEventListener("click", (event) => {
     if (event.target === serviceItemModal) closeServiceItemModal();
   });
-
-  // Add Schedule modal
   $("#scheduleModalClose").addEventListener("click", closeScheduleModal);
   $("#scheduleCancel").addEventListener("click", closeScheduleModal);
   scheduleForm.addEventListener("submit", submitSchedule);
@@ -2367,16 +2354,12 @@ function bindEvents() {
     if (event.target === scheduleModal) closeScheduleModal();
   });
   $("#schedProject").addEventListener("change", onScheduleProjectChange);
-
-  // Add Process Value modal
   $("#pvAttributeModalClose").addEventListener("click", closePvAttributeModal);
   $("#pvAttributeCancel").addEventListener("click", closePvAttributeModal);
   pvAttributeForm.addEventListener("submit", submitPvAttribute);
   pvAttributeModal.addEventListener("click", (event) => {
     if (event.target === pvAttributeModal) closePvAttributeModal();
   });
-
-  // Add Reading modal
   $("#readingModalClose").addEventListener("click", closeReadingModal);
   $("#readingCancel").addEventListener("click", closeReadingModal);
   readingForm.addEventListener("submit", submitReading);
@@ -2386,64 +2369,48 @@ function bindEvents() {
   $("#rdProject").addEventListener("change", onReadingProjectChange);
   $("#rdPackage").addEventListener("change", onReadingPackageChange);
   $("#rdAttribute").addEventListener("change", onReadingAttributeChange);
-
-  // Add Manufacturer modal
   $("#manufacturerModalClose").addEventListener("click", closeManufacturerModal);
   $("#manufacturerCancel").addEventListener("click", closeManufacturerModal);
   manufacturerForm.addEventListener("submit", submitManufacturer);
   manufacturerModal.addEventListener("click", (event) => {
     if (event.target === manufacturerModal) closeManufacturerModal();
   });
-
-  // Add Device Type modal
   $("#deviceTypeModalClose").addEventListener("click", closeDeviceTypeModal);
   $("#deviceTypeCancel").addEventListener("click", closeDeviceTypeModal);
   deviceTypeForm.addEventListener("submit", submitDeviceType);
   deviceTypeModal.addEventListener("click", (event) => {
     if (event.target === deviceTypeModal) closeDeviceTypeModal();
   });
-
-  // Add Check Type modal
   $("#checkTypeModalClose").addEventListener("click", closeCheckTypeModal);
   $("#checkTypeCancel").addEventListener("click", closeCheckTypeModal);
   checkTypeForm.addEventListener("submit", submitCheckType);
   checkTypeModal.addEventListener("click", (event) => {
     if (event.target === checkTypeModal) closeCheckTypeModal();
   });
-
-  // Add Version Source modal
   $("#versionSourceModalClose").addEventListener("click", closeVersionSourceModal);
   $("#versionSourceCancel").addEventListener("click", closeVersionSourceModal);
   versionSourceForm.addEventListener("submit", submitVersionSource);
   versionSourceModal.addEventListener("click", (event) => {
     if (event.target === versionSourceModal) closeVersionSourceModal();
   });
-
-  // Add Technician modal
   $("#technicianModalClose").addEventListener("click", closeTechnicianModal);
   $("#technicianCancel").addEventListener("click", closeTechnicianModal);
   technicianForm.addEventListener("submit", submitTechnician);
   technicianModal.addEventListener("click", (event) => {
     if (event.target === technicianModal) closeTechnicianModal();
   });
-
-  // Add Device modal
   $("#deviceModalClose").addEventListener("click", closeDeviceModal);
   $("#deviceCancel").addEventListener("click", closeDeviceModal);
   deviceForm.addEventListener("submit", submitDevice);
   deviceModal.addEventListener("click", (event) => {
     if (event.target === deviceModal) closeDeviceModal();
   });
-
-  // Add Version Log modal
   $("#versionLogModalClose").addEventListener("click", closeVersionLogModal);
   $("#versionLogCancel").addEventListener("click", closeVersionLogModal);
   versionLogForm.addEventListener("submit", submitVersionLog);
   versionLogModal.addEventListener("click", (event) => {
     if (event.target === versionLogModal) closeVersionLogModal();
   });
-
-  // Add Package Device modal
   $("#packageDeviceModalClose").addEventListener("click", closePackageDeviceModal);
   $("#packageDeviceCancel").addEventListener("click", closePackageDeviceModal);
   packageDeviceForm.addEventListener("submit", submitPackageDevice);
@@ -2452,7 +2419,6 @@ function bindEvents() {
   });
   $("#pdProject").addEventListener("change", onPackageDeviceProjectChange);
   $("#pdDevice").addEventListener("change", onPackageDeviceDeviceChange);
-
   elements.menuButton.addEventListener("click", () =>
     elements.sidebar.classList.contains("open") ? closeSidebar() : openSidebar()
   );
