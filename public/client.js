@@ -955,7 +955,7 @@ async function loadVersionLogsView() {
   renderSystemsTable(
     "Version Logs",
     "Confirmed firmware / EOL / EOS records",
-    `<tr><th>ID</th><th>Manufacturer</th><th>Device</th><th>Check Type</th><th>Version</th><th>Release Date</th><th>EOL Date</th><th>EOS Date</th><th>Confirmed By</th><th>Latest</th></tr>`,
+    `<tr><th>ID</th><th>Manufacturer</th><th>Device</th><th>Check Type</th><th>Version</th><th>Release Date</th><th>EOL Date</th><th>EOS Date</th><th>Confirmed By</th><th>Latest</th><th>Actions</th></tr>`,
     items
       .map(
         (v) => `
@@ -970,6 +970,7 @@ async function loadVersionLogsView() {
         <td>${formatDate(v.eos_date)}</td>
         <td>${contactLink(v.confirmed_by_id, v.confirmed_by_name)}</td>
         <td>${v.is_approved_latest ? "Yes" : "–"}</td>
+        <td><button type="button" class="text-button" data-edit-versionlog="${v.id}">Edit</button></td>
       </tr>`
       )
       .join("")
@@ -2283,43 +2284,114 @@ async function submitDevice(event) {
   }
 }
 
-/* ---------------- Add Version Log ---------------- */
+/* ---------------- Add / Edit Version Log ---------------- */
+async function apiPut(url, payload) {
+  const response = await fetch(url, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify(payload)
+  });
+  const result = (response.headers.get("content-type") || "").includes("application/json")
+    ? await response.json()
+    : null;
+  if (!response.ok) {
+    throw new Error(
+      result?.error || result?.message || `Request failed with status ${response.status}`
+    );
+  }
+  return result;
+}
+
 const versionLogModal = $("#versionLogModal");
 const versionLogForm = $("#versionLogForm");
+let editingVersionLogId = null;
+
+function setVersionLogModalMode(isEdit) {
+  $("#versionLogModalTitle").textContent = isEdit ? "Edit Version Log" : "Add Version Log";
+  $("#versionLogSave").textContent = isEdit ? "Save changes" : "Save version log";
+}
+
+async function fillVersionLogSelects(existing = null) {
+  const [devices, checkTypes, technicians] = await Promise.all([
+    apiFetch(ENDPOINTS.devices + "?active=true"),
+    apiFetch(ENDPOINTS.checkTypes),
+    fillTechnicianSelect("#vlConfirmedBy", "Not yet confirmed")
+  ]);
+  const deviceOptions = itemsOf(devices).map((d) => ({
+    id: d.id,
+    label: `${d.manufacturer_name} - ${d.name} (${d.hardware_version})`
+  }));
+  if (existing && !deviceOptions.some((o) => Number(o.id) === Number(existing.device_id))) {
+    deviceOptions.push({
+      id: existing.device_id,
+      label: `${existing.manufacturer_name} - ${existing.device_name} (inactive)`
+    });
+  }
+  $("#vlDevice").innerHTML =
+    '<option value="">Select device</option>' +
+    deviceOptions.map((o) => `<option value="${o.id}">${escapeHtml(o.label)}</option>`).join("");
+  $("#vlCheckType").innerHTML =
+    '<option value="">Select check type</option>' +
+    itemsOf(checkTypes).map((t) => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join("");
+  if (
+    existing &&
+    existing.confirmed_by_id &&
+    !technicians.some((t) => Number(t.id) === Number(existing.confirmed_by_id))
+  ) {
+    $("#vlConfirmedBy").insertAdjacentHTML(
+      "beforeend",
+      `<option value="${existing.confirmed_by_id}">${escapeHtml(
+        existing.confirmed_by_name ?? `#${existing.confirmed_by_id}`
+      )}</option>`
+    );
+  }
+}
+
 async function openVersionLogModal() {
   versionLogForm.reset();
-  const latest = $("#vlIsApprovedLatest");
-  if (latest) latest.checked = false;
+  editingVersionLogId = null;
+  setVersionLogModalMode(false);
   try {
-    const [devices, checkTypes] = await Promise.all([
-      apiFetch(ENDPOINTS.devices + "?active=true"),
-      apiFetch(ENDPOINTS.checkTypes),
-      fillTechnicianSelect("#vlConfirmedBy", "Not yet confirmed")
-    ]);
-    $("#vlDevice").innerHTML =
-      '<option value="">Select device</option>' +
-      itemsOf(devices)
-        .map(
-          (d) =>
-            `<option value="${d.id}">${escapeHtml(
-              `${d.manufacturer_name} - ${d.name} (${d.hardware_version})`
-            )}</option>`
-        )
-        .join("");
-    $("#vlCheckType").innerHTML =
-      '<option value="">Select check type</option>' +
-      itemsOf(checkTypes).map((t) => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join("");
+    await fillVersionLogSelects();
     versionLogModal.classList.remove("hidden");
   } catch (error) {
     showAlert(`Unable to open the version log form: ${error.message}`);
   }
 }
+
+async function openVersionLogEditModal(id) {
+  try {
+    const item = await apiFetch(`${ENDPOINTS.versionLogs}/${encodeURIComponent(id)}`);
+    versionLogForm.reset();
+    await fillVersionLogSelects(item);
+    editingVersionLogId = item.id;
+    setVersionLogModalMode(true);
+    const dateOnly = (v) => (v ? String(v).slice(0, 10) : "");
+    $("#vlDevice").value = String(item.device_id);
+    $("#vlCheckType").value = String(item.check_type_id);
+    $("#vlVersion").value = item.version ?? "";
+    $("#vlReleaseDate").value = dateOnly(item.release_date);
+    $("#vlEolDate").value = dateOnly(item.eol_date);
+    $("#vlEosDate").value = dateOnly(item.eos_date);
+    $("#vlConfirmedBy").value = item.confirmed_by_id ? String(item.confirmed_by_id) : "";
+    $("#vlConfirmDate").value = dateOnly(item.confirm_date);
+    $("#vlIsApprovedLatest").checked = !!item.is_approved_latest;
+    $("#vlNotes").value = item.notes ?? "";
+    versionLogModal.classList.remove("hidden");
+  } catch (error) {
+    showAlert(`Unable to open the version log for editing: ${error.message}`);
+  }
+}
+
 function closeVersionLogModal() {
   versionLogModal.classList.add("hidden");
+  editingVersionLogId = null;
 }
+
 async function submitVersionLog(event) {
   event.preventDefault();
   const saveButton = $("#versionLogSave");
+  const isEdit = editingVersionLogId !== null;
   const payload = {
     device_id: Number($("#vlDevice").value),
     check_type_id: Number($("#vlCheckType").value),
@@ -2339,15 +2411,19 @@ async function submitVersionLog(event) {
   saveButton.disabled = true;
   saveButton.textContent = "Saving...";
   try {
-    await apiPost(ENDPOINTS.versionLogs, payload);
+    if (isEdit) {
+      await apiPut(`${ENDPOINTS.versionLogs}/${encodeURIComponent(editingVersionLogId)}`, payload);
+    } else {
+      await apiPost(ENDPOINTS.versionLogs, payload);
+    }
     closeVersionLogModal();
-    showToast("Version log added");
+    showToast(isEdit ? "Version log updated" : "Version log added");
     await reloadCurrentSystem();
   } catch (error) {
     showAlert(`Unable to save version log: ${error.message}`);
   } finally {
     saveButton.disabled = false;
-    saveButton.textContent = "Save version log";
+    setVersionLogModalMode(editingVersionLogId !== null);
   }
 }
 
@@ -2682,6 +2758,10 @@ function bindEvents() {
   versionLogForm.addEventListener("submit", submitVersionLog);
   versionLogModal.addEventListener("click", (event) => {
     if (event.target === versionLogModal) closeVersionLogModal();
+  });
+  $("#systemsBody").addEventListener("click", (event) => {
+    const btn = event.target.closest("[data-edit-versionlog]");
+    if (btn) openVersionLogEditModal(btn.dataset.editVersionlog);
   });
   $("#packageDeviceModalClose").addEventListener("click", closePackageDeviceModal);
   $("#packageDeviceCancel").addEventListener("click", closePackageDeviceModal);
