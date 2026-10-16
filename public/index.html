@@ -1164,7 +1164,7 @@
         </form>
       </div>
     </div>
-    <!-- ============================== Add Device modal ============================== -->
+    <!-- ============================== Add / Edit Device modal ============================== -->
     <div
       class="modal-backdrop hidden"
       id="deviceModal"
@@ -1181,6 +1181,7 @@
         </div>
         <form id="deviceForm">
           <div class="modal-body">
+            <div class="alert hidden" id="deviceFormError" role="alert"></div>
             <div class="form-grid">
               <div class="field">
                 <label for="devManufacturer">Manufacturer <em>*</em></label>
@@ -1199,12 +1200,26 @@
                 <input id="devName" type="text" required placeholder="e.g. PPU-3" />
               </div>
               <div class="field">
+                <label for="devHardwareVersion">Hardware Version</label>
+                <input id="devHardwareVersion" type="text" placeholder="X" />
+              </div>
+              <div class="field">
                 <label for="devOrderNumber">Order Number</label>
                 <input id="devOrderNumber" type="text" placeholder="e.g. 6ES7515-2RN03-0AB0" />
               </div>
-              <div class="field">
-                <label for="devHardwareVersion">Hardware Version</label>
-                <input id="devHardwareVersion" type="text" placeholder="X" />
+              <div class="field full">
+                <label for="devWebsite">Website</label>
+                <input id="devWebsite" type="url" placeholder="https://..." />
+              </div>
+              <div class="field full">
+                <label for="devNotes">Notes</label>
+                <textarea id="devNotes" placeholder="Optional details"></textarea>
+              </div>
+              <div class="field full hidden" id="devActiveField">
+                <label class="checkbox-field">
+                  <input id="devActive" type="checkbox" checked />
+                  <span>Active</span>
+                </label>
               </div>
             </div>
           </div>

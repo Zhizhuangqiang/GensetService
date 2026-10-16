@@ -861,7 +861,7 @@ async function loadDevicesView() {
   renderSystemsTable(
     "Devices",
     "Device catalog (manufacturer, model, hardware version)",
-    `<tr><th>ID</th><th>Manufacturer</th><th>Device Type</th><th>Name</th><th>Order Number</th><th>Hardware Version</th><th>Active</th></tr>`,
+    `<tr><th>ID</th><th>Manufacturer</th><th>Device Type</th><th>Name</th><th>Hardware Version</th><th>Order Number</th><th>Website</th><th>Notes</th><th>Active</th><th>Actions</th></tr>`,
     items
       .map(
         (d) => `
@@ -870,13 +870,25 @@ async function loadDevicesView() {
         <td>${escapeHtml(d.manufacturer_name)}</td>
         <td>${escapeHtml(d.device_type_name)}</td>
         <td>${escapeHtml(d.name)}</td>
-        <td>${escapeHtml(d.order_number ?? "–")}</td>
         <td>${escapeHtml(d.hardware_version ?? "–")}</td>
+        <td>${escapeHtml(d.order_number ?? "–")}</td>
+        <td>${
+          d.website
+            ? `<a href="${escapeHtml(d.website)}" target="_blank" rel="noopener">Link</a>`
+            : "–"
+        }</td>
+        <td title="${escapeHtml(d.notes ?? "")}">${escapeHtml(truncate(d.notes, 40) || "–")}</td>
         <td>${d.active ? "Yes" : "No"}</td>
+        <td><button type="button" class="text-button" data-edit-device="${d.id}">Edit</button></td>
       </tr>`
       )
       .join("")
   );
+}
+
+function truncate(value, max) {
+  const text = String(value ?? "");
+  return text.length > max ? text.slice(0, max - 1) + "…" : text;
 }
 
 async function loadDeviceTypesView() {
@@ -2230,57 +2242,131 @@ async function submitTechnician(event) {
   }
 }
 
-/* ---------------- Add Device ---------------- */
+/* ---------------- Add / Edit Device ---------------- */
 const deviceModal = $("#deviceModal");
 const deviceForm = $("#deviceForm");
+let editingDeviceId = null;
+
+function setDeviceModalMode(isEdit) {
+  $("#deviceModalTitle").textContent = isEdit ? "Edit Device" : "Add Device";
+  $("#deviceSave").textContent = isEdit ? "Save changes" : "Save device";
+  $("#devActiveField").classList.toggle("hidden", !isEdit);
+}
+
+/* Errors are shown inside the modal so they are not hidden behind the backdrop. */
+function showDeviceFormError(message) {
+  const el = $("#deviceFormError");
+  el.textContent = message;
+  el.classList.toggle("hidden", !message);
+}
+
+/* Fills manufacturer / device type selects. When editing a device whose
+ * manufacturer or type is inactive, that option is appended so the
+ * current value is still shown. */
+async function fillDeviceSelects(existing = null) {
+  const [manufacturers, deviceTypes] = await Promise.all([
+    apiFetch(ENDPOINTS.manufacturers + "?active=true"),
+    apiFetch(ENDPOINTS.deviceTypes + "?active=true")
+  ]);
+  const mfrOptions = itemsOf(manufacturers).map((m) => ({ id: m.id, name: m.name }));
+  const typeOptions = itemsOf(deviceTypes).map((t) => ({ id: t.id, name: t.name }));
+  if (existing && !mfrOptions.some((o) => Number(o.id) === Number(existing.manufacturer_id))) {
+    mfrOptions.push({ id: existing.manufacturer_id, name: `${existing.manufacturer_name} (inactive)` });
+  }
+  if (existing && !typeOptions.some((o) => Number(o.id) === Number(existing.device_type_id))) {
+    typeOptions.push({ id: existing.device_type_id, name: `${existing.device_type_name} (inactive)` });
+  }
+  $("#devManufacturer").innerHTML =
+    '<option value="">Select manufacturer</option>' +
+    mfrOptions.map((o) => `<option value="${o.id}">${escapeHtml(o.name)}</option>`).join("");
+  $("#devDeviceType").innerHTML =
+    '<option value="">Select device type</option>' +
+    typeOptions.map((o) => `<option value="${o.id}">${escapeHtml(o.name)}</option>`).join("");
+}
+
 async function openDeviceModal() {
   deviceForm.reset();
+  editingDeviceId = null;
+  setDeviceModalMode(false);
+  showDeviceFormError("");
   $("#devHardwareVersion").value = "X";
   try {
-    const [manufacturers, deviceTypes] = await Promise.all([
-      apiFetch(ENDPOINTS.manufacturers + "?active=true"),
-      apiFetch(ENDPOINTS.deviceTypes + "?active=true")
-    ]);
-    $("#devManufacturer").innerHTML =
-      '<option value="">Select manufacturer</option>' +
-      itemsOf(manufacturers).map((m) => `<option value="${m.id}">${escapeHtml(m.name)}</option>`).join("");
-    $("#devDeviceType").innerHTML =
-      '<option value="">Select device type</option>' +
-      itemsOf(deviceTypes).map((t) => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join("");
+    await fillDeviceSelects();
+    // Pre-select the manufacturer currently chosen in the Devices filter
+    const filterMfr = elements.sysManufacturerFilter ? elements.sysManufacturerFilter.value : "";
+    if (filterMfr) $("#devManufacturer").value = filterMfr;
     deviceModal.classList.remove("hidden");
+    $("#devName").focus();
   } catch (error) {
     showAlert(`Unable to open the device form: ${error.message}`);
   }
 }
+
+async function openDeviceEditModal(id) {
+  try {
+    const item = await apiFetch(`${ENDPOINTS.devices}/${encodeURIComponent(id)}`);
+    deviceForm.reset();
+    showDeviceFormError("");
+    await fillDeviceSelects(item);
+    editingDeviceId = item.id;
+    setDeviceModalMode(true);
+    $("#devManufacturer").value = String(item.manufacturer_id);
+    $("#devDeviceType").value = String(item.device_type_id);
+    $("#devName").value = item.name ?? "";
+    $("#devHardwareVersion").value = item.hardware_version ?? "X";
+    $("#devOrderNumber").value = item.order_number ?? "";
+    $("#devWebsite").value = item.website ?? "";
+    $("#devNotes").value = item.notes ?? "";
+    $("#devActive").checked = item.active !== false;
+    deviceModal.classList.remove("hidden");
+  } catch (error) {
+    showAlert(`Unable to open the device for editing: ${error.message}`);
+  }
+}
+
 function closeDeviceModal() {
   deviceModal.classList.add("hidden");
+  editingDeviceId = null;
 }
+
 async function submitDevice(event) {
   event.preventDefault();
   const saveButton = $("#deviceSave");
+  const isEdit = editingDeviceId !== null;
+  showDeviceFormError("");
+
   const payload = {
     manufacturer_id: Number($("#devManufacturer").value),
     device_type_id: Number($("#devDeviceType").value),
     name: $("#devName").value.trim(),
+    hardware_version: $("#devHardwareVersion").value.trim() || "X",
     order_number: $("#devOrderNumber").value.trim() || null,
-    hardware_version: $("#devHardwareVersion").value.trim() || "X"
+    website: $("#devWebsite").value.trim() || null,
+    notes: $("#devNotes").value.trim() || null
   };
+  if (isEdit) payload.active = $("#devActive").checked;
+
   if (!payload.manufacturer_id || !payload.device_type_id || !payload.name) {
-    showAlert("Manufacturer, device type and name are required.");
+    showDeviceFormError("Manufacturer, device type and name are required.");
     return;
   }
+
   saveButton.disabled = true;
   saveButton.textContent = "Saving...";
   try {
-    await apiPost(ENDPOINTS.devices, payload);
+    if (isEdit) {
+      await apiPut(`${ENDPOINTS.devices}/${encodeURIComponent(editingDeviceId)}`, payload);
+    } else {
+      await apiPost(ENDPOINTS.devices, payload);
+    }
     closeDeviceModal();
-    showToast("Device added");
+    showToast(isEdit ? "Device updated" : "Device added");
     await reloadCurrentSystem();
   } catch (error) {
-    showAlert(`Unable to save device: ${error.message}`);
+    showDeviceFormError(`Unable to save device: ${error.message}`);
   } finally {
     saveButton.disabled = false;
-    saveButton.textContent = "Save device";
+    setDeviceModalMode(editingDeviceId !== null);
   }
 }
 
@@ -2760,8 +2846,10 @@ function bindEvents() {
     if (event.target === versionLogModal) closeVersionLogModal();
   });
   $("#systemsBody").addEventListener("click", (event) => {
-    const btn = event.target.closest("[data-edit-versionlog]");
-    if (btn) openVersionLogEditModal(btn.dataset.editVersionlog);
+    const vlBtn = event.target.closest("[data-edit-versionlog]");
+    if (vlBtn) openVersionLogEditModal(vlBtn.dataset.editVersionlog);
+    const devBtn = event.target.closest("[data-edit-device]");
+    if (devBtn) openDeviceEditModal(devBtn.dataset.editDevice);
   });
   $("#packageDeviceModalClose").addEventListener("click", closePackageDeviceModal);
   $("#packageDeviceCancel").addEventListener("click", closePackageDeviceModal);
